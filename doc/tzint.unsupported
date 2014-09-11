@@ -1,0 +1,6 @@
+or
+.br
+\fBtzint::Encode\fR \fBfile\fR \fIfilename\fR \fIdata\fR ?\fB\-option \fIvalue\fR ...?
+.br
+
+\fBfile\fR command encodes and writes a barcode to the given \fIfilename\fR. The filename extention defines the image format. Valid extentions are \fB.png\fR, \fB.eps\fR, \fB.svg\fR, \fB.txt\fR.

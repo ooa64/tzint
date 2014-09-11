@@ -1,0 +1,252 @@
+'\"
+.so man.macros
+.TH tzint n 1.0 "Tcl-Extensions"
+.HS tzint tcl
+.BS
+'\" Note:  do not modify the .SH NAME line immediately below!
+.SH NAME
+tzint \- tcl package for libzint barcode encoding library
+.SH SYNOPSIS
+\fBpackage require tzint\fR ?\fB1.0\fR?
+.sp
+\fBtzint::Encode\fR \fBversion\fR
+.br
+or
+.br
+\fBtzint::Encode\fR \fBsymbologies\fR
+.br
+or
+.br
+\fBtzint::Encode\fR \fBbits\fR|\fBeps\fR|\fBsvg\fR|\fBxbm\fR \fIvarName\fR \fIdata\fR ?\fB\-option \fIvalue\fR ...?
+.br
+.br
+.sp
+\fBtzint::RcsId\fR
+.BE
+.SH DESCRIPTION
+.PP
+A barcode encoding library supporting over 50 symbologies including Code 128, Data Matrix, USPS OneCode, EAN-128, UPC/EAN, ITF, QR Code, Code 16k, PDF417, MicroPDF417, LOGMARS, Maxicode, GS1 DataBar, Aztec, Composite Symbols and more.  No Tk needed!
+.PP
+Performs one of several barcode encoding operations, depending on option. The legal commands and options (which may be abbreviated) are:
+.PP
+\fBversion\fR command returns the version of underlaying libzint.
+.br
+\fBsymbologies\fR command returns a list of symbology names that can be encoded.
+.br
+\fBbits\fR|\fBeps\fR|\fBsvg\fR|\fBxbm\fR command encodes a barcode into \fIvarName\fR.
+.br
+tzint::Encode will return 0 if no error occurs. More infomation can be obtainted by option -stat.
+.PP
+Selecting which type of barcode you wish to produce (i.e. which symbology to use) can be done using the \fB\-symbology\fR \fIsymbolName\fR.
+.PP
+The height of a 1d symbol can be adjusted using the \fB\-height\fR \fIinteger\fR
+.PP
+The amount of whitespace to the left and right of the generated barcode can be altered using \fB\-whitespace\fR \fIinteger\fR
+.PP
+tzint allows the symbol to be bound with 'boundary bars' using the option \fB\-bind\fR \fIboolean\fR. These bars help to prevent misreading of the symbol by corrupting a scan if the scanning beam strays off the top or bottom of the symbol. tzint can also put a border right around the symbol and its whitespace with the \fB\-box\fR \fIboolean\fR option. This option is automatically selected for ITF-14 symbols.
+.br
+The width of the boundary or box can be specified using the \fB\-border\fR \fIinteger\fR switch.
+.PP
+The default colours of a symbol are a black symbol on a white background. tzint allows you to change this. For more specific needs the foreground and background colours can be specified using the \fB\-foreground\fR or \fB\-fg\fR or \fB\-background\fR or \fB\-bg\fR options followed by a number in \fIRGB\fR hexadecimal notation (the same system used in HTML).
+.PP
+The symbol can be rotated through four orientations using the \fB\-rotate\fR option followed by the angle \fI0\fR|\fI90\fR|\fI180\fR|\fI270\fR of rotation.
+.PP
+The scale of the image can be altered using the \fB\-scale\fR \fIinteger\fR option followed by a multiple of the default x-dimension.
+.PP
+Input modes:
+.br
+GS1 data can be encoded in a number of symbologies. Application identifiers are enclosed in [square brackets] followed by the data to be encoded. To encode GS1 data use \fB\-format\fR \fIgs1\fR. GS1 mode is assumed (and doesn't need to be set) for EAN-128, DataBar and Composite symbologies but is also available for Code 16k, Data Matrix (ECC 200 only), Aztec Code and QR Code.
+.br
+QR Code, Micro QR Code and Grid Matrix standards can encode Kanji characters. These can be given in Unicode \fB\-format\fR \fIunicode\fR (default) format as part of the input data string. Conversion from Unicode to Shift- JIS or GB 2312 as appropriate is handled by tzint.
+.br
+If the input data is not Unicode encoded or should be interpreted as an 8-bit data stream then the \fB\-format\fR \fIbinary\fR option can be used to achieve this.
+.PP
+Barcode specific options:
+.br
+\fB\-cols\fR \fIinteger\fR number of columns PDF417
+.br
+\fB\-vers\fR \fIinteger\fR option QR Code and Plessy
+.br
+\fB\-security\fR \fIinteger\fR error correction level PDF417 and QR Code
+.br
+\fB\-mode\fR \fIinteger\fR tructured primary data mode Maxicode and Composite
+.br
+\fB\-primary\fR \fItext\fR structured primary data Maxicode and Composite
+.br
+\fB\-notext\fR \fIboolean\fR no interpretation line
+.br
+\fB\-square\fR \fIboolean\fR force DataMatrix symbols to be square
+.br
+\fB\-init\fR \fIboolean\fR create reader initialisation symbol Code128 and DataMatrix
+.br
+\fB\-smalltext\fR \fIboolean\fR tiny interpretation line font
+.PP
+Changing the '0'/'1' character when using the bits command then the \fB\-onchar\fR and/or \fB\-offchar\fR \fIchar\fR option can be used.
+.PP
+MSI Plessey:
+.br
+Based on Plessey and developed by MSE Data Corporation, MSI Plessey is available with a range of check digit options available by using the \fB\-vers\fR \fIinteger\fR option. Any length numeric (digits 0-9) input can be encoded. The table below shows the options available:
+.nf
+
+Value Check Digits
+----- ------------
+    0 None
+    1 Modulo-10
+    2 Modulo-10 & Modulo-10
+    3 Modulo-11
+    4 Modulo-11 & Modulo-10
+.fi
+.PP
+Standard Code 39 (ISO 16388):
+.br
+Standard Code 39 was developed in 1974 by Intermec. Input data can be of any length and supports the characters 0-9, A- Z, dash (-), full stop (.), space, asterisk (*), dollar ($), slash (/), plus (+) and percent (%). The standard does not require a check digit but a modulo-43 check digit can be added if required by using \fB\-vers\fR \fI1\fR.
+.PP
+Extended Code 39:
+.br
+Also known as Code 39e and Code39+, this symbology expands on Standard Code 39 to provide support to the full ASCII character set. The standard does not require a check digit but a modulo-43 check digit can be added if required by using \fB\-vers\fR \fI1\fR.
+.PP
+GS1 DataBar (ISO 24724)
+.br
+Also known as RSS (Reduced Spaced Symbology) these symbols are due to replace GS1-128 symbols starting in 2010 in accordance with the GS1 General Specification. If a GS1 DataBar symbol is to be printed with a 2D component as specified in ISO 24723 set option \fB\-mode\fR \fI2\fR at the command prompt.
+.PP
+PDF417 (ISO 15438):
+.br
+Heavily used in the parcel industry, the PDF417 symbology can encode a vast amount of data into a small space. tzint supports encoding up to the ISO standard maximum symbol size of 925 codewords which (at error correction level 0) allows a maximum data size of 1850 text characters, or 2710 digits. The width of the generated PDF417 symbol can be specified at the command line using the \fB\-cols\fR switch followed by a number between \fI1\fR and \fI30\fR, and the amount of check digit information can be specified by using the \fB\-security\fR switch followed by a number between \fI0\fR and \fI8\fR where the number of codewords used for check information is determined by 2(value + 1). 
+The default level of check information is determined by the amount of data being encoded. International text support is provided using the Latin-1 character set as described in Appendix A. A separate symbology ID can be used to encode Health Industry Barcode (HIBC) data which adds a leading '+' character and a modulo-49 check digit to the encoded data.
+.PP
+Channel Code
+.br
+A highly compressed symbol for numeric data. The number of channels in the symbol can be between 3 and 8 and this can be specified by setting the value of \fB\-vers\fR. It can also be determined by the length of the input data e.g. a three character input string generates a 4 channel code by default.
+.br
+The maximum values permitted depend on the number of channels used as shown in the table below:
+.nf
+
+Channels  Minimum Value  Maximum Value
+       3             00             26
+       4            000            292
+       5           0000           3493
+       6          00000          44072
+       7         000000         576688
+       8        0000000        7742862
+.fi
+Note that 7 and 8 channel codes require a processor intensive algorithm to generate and so response times when generating these codes will be relatively slow.
+.PP
+QR Code (ISO 18004):
+.br
+Also known as Quick Response Code this symbology was developed by Denso. Four levels of error correction are available using the \fB\-security\fR option as shown in the following table.
+.nf
+
+Input  ECC Level Error  Correction Capacity   Recovery Capacity
+-----  ---------------  -------------------   -----------------
+    1  L (default)      Approx 20% of symbol  Approx 7%
+    2  M                Approx 37% of symbol  Approx 15%
+    3  Q                Approx 55% of symbol  Approx 25%
+    4  H                Approx 65% of symbol  Approx 30%
+
+.fi
+The size of the symbol can be set by using the \fB\-vers\fR option to the QR Code version required (1-40). 1 = 21 x 21 and 40 = 177 x 177.
+.br
+The maximum capacity for a (version 40) QR Code symbol is 7089 numeric digits, 4296 alphanumeric characters or 2953 bytes of data. QR Code symbols can also be used to encode GS1 data. QR Code symbols can encode characters in the Latin-1 set and Kanji characters which are members of the Shift-JIS encoding scheme. Input should be entered as a UTF-8 stream with conversion to Shift-JIS being carried out automatically by tzint. A separate symbology ID can be used to encode Health Industry Barcode (HIBC) data which adds a leading '+' character and a modulo-49 check digit to the encoded data.
+.PP
+GS1 DataBar Expanded Stacked (ISO 24724)
+.br
+A stacked variation of the GS1 DataBar Expanded symbol for smaller packages. In addition the width of the symbol can be altered using the \fB\-cols\fR option. In this case the number of columns relates to the number of character pairs on each row of the symbol. For symbols with a 2D component the number of columns must be at least 2. This symbol can be generated with a two-dimensional component to make a composite symbol.
+.PP
+Composite Symbols (ISO 24723)
+.br
+Composite symbols employ a mixture of components to give more comprehensive information about a product. The permissible contents of a composite symbol is determined by the terms of the GS1 General Specification. Composite symbols consist of a linear component which can be an EAN, UPC, GS1-128 or GS1 DataBar symbol, a 2D component which is based on PDF417 or MicroPDF417, and a separator pattern. The type of linear component to be used is determined using the \fB\-symbology\fR option as with other encoding methods.
+.br
+Valid values are: \fIeanx_cc\fR, \fIean128_cc\fR, \fIrss14_cc\fR, \fIrss_ltd_cc\fR, \fIrss_exp_cc\fR, \fIupca_cc\fR, \fIupce_cc\fR, \fIrss14stack_cc\fR, \fIrss14_omni_cc\fR and \fIrss_expstack_cc\fR.
+.br
+The data to be encoded in the linear component of a composite symbol should be entered into a primary string with the data for the 2D component being entered in the normal way (see exmpample below).
+.SH EXAMPLE
+.PP
+Encode a QR Code with data "Abc12":
+.br
+.nf
+
+% tzint::Encode xbm myXbmVal {Abc12} -symbol qr -stat myStatVal
+0
+.PP
+\fBmyStatVal\fR will be:
+.nf
+
+zint 2.4.4 error {} rows 21 columns 21 width 42 height 42
+.fi
+.PP
+\fBmyXbmVal\fR will be:
+.nf
+
+#define symbol_width 42
+#define symbol_height 42
+static unsigned char symbol_bits[] = {
+  0xff, 0x3f, 0xcc, 0xf3, 0xff, 0x03,
+  0xff, 0x3f, 0xcc, 0xf3, 0xff, 0x03,
+  0x03, 0x30, 0xfc, 0x30, 0x00, 0x03,
+  0x03, 0x30, 0xfc, 0x30, 0x00, 0x03,
+  0xf3, 0x33, 0xcf, 0x33, 0x3f, 0x03,
+  0xf3, 0x33, 0xcf, 0x33, 0x3f, 0x03,
+  0xf3, 0x33, 0xcc, 0x30, 0x3f, 0x03,
+  0xf3, 0x33, 0xcc, 0x30, 0x3f, 0x03,
+  0xf3, 0x33, 0x30, 0x33, 0x3f, 0x03,
+  0xf3, 0x33, 0x30, 0x33, 0x3f, 0x03,
+  0x03, 0x30, 0x00, 0x33, 0x00, 0x03,
+  0x03, 0x30, 0x00, 0x33, 0x00, 0x03,
+  0xff, 0x3f, 0x33, 0xf3, 0xff, 0x03,
+  0xff, 0x3f, 0x33, 0xf3, 0xff, 0x03,
+  0x00, 0x00, 0xcf, 0x03, 0x00, 0x00,
+  0x00, 0x00, 0xcf, 0x03, 0x00, 0x00,
+  0x3f, 0xff, 0xff, 0x3c, 0x30, 0x00,
+  0x3f, 0xff, 0xff, 0x3c, 0x30, 0x00,
+  0x3c, 0x0f, 0x03, 0x30, 0xcc, 0x03,
+  0x3c, 0x0f, 0x03, 0x30, 0xcc, 0x03,
+  0x03, 0xff, 0x30, 0x03, 0xc3, 0x03,
+  0x03, 0xff, 0x30, 0x03, 0xc3, 0x03,
+  0x0c, 0x0f, 0x3f, 0x30, 0x0, 0x00,
+  0x0c, 0x0f, 0x3f, 0x30, 0x00, 0x00,
+  0xc0, 0xfc, 0x30, 0x33, 0x03, 0x03,
+  0xc0, 0xfc, 0x30, 0x33, 0x03, 0x03,
+  0x00, 0x00, 0xcf, 0xcc, 0xcc, 0x00,
+  0x00, 0x00, 0xcf, 0xcc, 0xcc, 0x00,
+  0xff, 0x3f, 0xc3, 0xfc, 0xcc, 0x03,
+  0xff, 0x3f, 0xc3, 0xfc, 0xcc, 0x03,
+  0x03, 0x30, 0xcf, 0xcf, 0x0f, 0x00,
+  0x03, 0x30, 0xcf, 0xcf, 0x0f, 0x00,
+  0xf3, 0x33, 0xc3, 0xfc, 0xcc, 0x03,
+  0xf3, 0x33, 0xc3, 0xfc, 0xcc, 0x03,
+  0xf3, 0x33, 0x0c, 0xf0, 0xcc, 0x00,
+  0xf3, 0x33, 0x0c, 0xf0, 0xcc, 0x00,
+  0xf3, 0x33, 0x0f, 0x03, 0x3f, 0x03,
+  0xf3, 0x33, 0x0f, 0x03, 0x3f, 0x03,
+  0x03, 0x30, 0x0f, 0xf0, 0xcf, 0x00,
+  0x03, 0x30, 0x0f, 0xf0, 0xcf, 0x00,
+  0xff, 0x3f, 0x33, 0x33, 0xcf, 0x03,
+  0xff, 0x3f, 0x33, 0x33, 0xcf, 0x03
+}
+.fi
+.PP
+Composite Symbol (ISO 24723)
+.br
+The data to be encoded in the linear component of a composite symbol should be entered into a primary string with the data for the 2D component being entered in the normal way. To do this use the \fB\--primary\fR option. For example:
+.nf
+
+% tzint::Encode file ./my_composite_symbol.png {[99]1234-abcd} -symbol eanx-cc -mode 1 -primacy {331234567890}
+0
+.PP
+.SH SEE ALSO
+.PP
+http://sourceforge.net/projects/zint/
+.SH LEGAL NOTICE
+.PP
+Copyright (C) 2014 Alexander Schoepe, Bochum, DE, <schoepe@users.sourceforge.net>
+.br
+Joerg Mehring, Bochum, DE
+.PP
+Copyright (C) 2009 Robin Stuart <robin@zint.org.uk>
+.br
+open source barcode library libzint (backend license BSD-3; see ZINT mailing list
+of May 2013 for related mails)
+'\" Local Variables:
+'\" mode: nroff
+'\" fill-column: 78
+
