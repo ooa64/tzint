@@ -19,7 +19,7 @@ dnl	to configure the system for the local environment.
 # so that we create the export library with the dll.
 #-----------------------------------------------------------------------
 
-AC_INIT([tzint], [1.0])
+AC_INIT([tzint], [1.1])
 
 #--------------------------------------------------------------------
 # Call TEA_INIT as the first TEA_ macro to set up initial vars.
@@ -71,8 +71,52 @@ TEA_SETUP_COMPILER
 # and PKG_TCL_SOURCES.
 #-----------------------------------------------------------------------
 
-AC_DEFINE(NO_PNG)
+AC_ARG_ENABLE(filecmd, [  --enable-filecmd        with file command (png lib needed) (default: on)], [tcl_ok=$enableval], [tcl_ok=yes])
+
+if test "$tcl_ok" = "no"; then
+
+    AC_DEFINE(NO_CMD_FILE)
+
+else
+
+    AC_ARG_WITH(png-include, [  --with-png-include=DIR   PNG includes are in DIR], PNG_INC_DIR=$withval, PNG_INC_DIR="/usr/include")
+    AC_ARG_WITH(png-lib, [  --with-png-lib=DIR	  PNG libraries are in DIR], PNG_LIB_DIR=$withval, PNG_LIB_DIR="/usr/lib")
+
+    AC_ARG_ENABLE(pngstatic, [  --enable-pngstatic      link static with libpng.a (default: off)], [tcl_ok=$enableval], [tcl_ok=no])
+
+
+    AC_MSG_CHECKING([for png header])
+    if test ! -f ${PNG_INC_DIR}/png.h ; then
+	AC_MSG_ERROR(Cannot find png.h in $PNG_INC_DIR use -with-png-include=?)
+    fi
+    AC_MSG_RESULT([yes])
+
+    TEA_ADD_INCLUDES([-I"${PNG_INC_DIR}"])
+
+
+    AC_MSG_CHECKING([for libpng lib])
+    if test "$tcl_ok" = "yes"; then
+	if test ! -f ${PNG_LIB_DIR}/libpng.a ; then
+	    AC_MSG_ERROR(Cannot find libpng.a in $PNG_LIB_DIR use --with-png-lib=?)
+	fi
+    else 
+	if test ! -f ${PNG_LIB_DIR}/libpng${TCL_SHLIB_SUFFIX} ; then
+	    AC_MSG_ERROR(Cannot find libpng${TCL_SHLIB_SUFFIX} in $PNG_LIB_DIR use --with-png-lib=?)
+	fi
+    fi
+    AC_MSG_RESULT([yes])
+
+    if test "$tcl_ok" = "yes"; then
+	TEA_ADD_LIBS([${PNG_LIB_DIR}/libpng.a])
+    else
+	TEA_ADD_LIBS([-L"${PNG_LIB_DIR}" -lpng])
+    fi
+
+fi
+
+
 AC_DEFINE(ZINT_VERSION, "2.4.4")
+AC_DEFINE(MY_TCL_INITSTUBS, "8.5")
 
 TEA_ADD_SOURCES([common.c render.c png.c library.c ps.c large.c reedsol.c gs1.c svg.c])
 TEA_ADD_SOURCES([code.c code128.c 2of5.c upcean.c telepen.c medical.c plessey.c rss.c])
@@ -81,7 +125,7 @@ TEA_ADD_SOURCES([code16k.c dmatrix.c pdf417.c qr.c maxicode.c composite.c aztec.
 TEA_ADD_SOURCES([tps.c tsvg.c tzint.c])
 TEA_ADD_HEADERS([])
 TEA_ADD_INCLUDES([])
-TEA_ADD_LIBS([-lz -lm -lpng])
+TEA_ADD_LIBS([-lz -lm])
 TEA_ADD_CFLAGS([])
 TEA_ADD_STUB_SOURCES([])
 TEA_ADD_TCL_SOURCES([])

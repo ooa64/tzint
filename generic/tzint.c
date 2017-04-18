@@ -31,10 +31,6 @@
     SUCH DAMAGE.
 */
 
-#define MY_TCL_INITSTUBS "8.6"
-#define PACKAGE_NAME "tzint"
-#define PACKAGE_VERSION "1.0"
-
 #ifdef _WINDOWS
 #include <windows.h>
 #ifndef DECLSPEC_EXPORT
@@ -55,7 +51,7 @@
 #define TRUE (!FALSE)
 #endif
 
-static char rcs[] = "@(#)tzint.c $Revision: 1.1 $ $Date: 2014/09/11 21:59:00 $ (BSD 3 License) Alexander Schoepe, Joerg Mehring, Bochum, DE";
+static char rcs[] = "@(#)tzint.c $Revision: 1.2 $ $Date: 2017/04/18 18:00:09 $ (BSD 3 License) Alexander Schoepe, Joerg Mehring, Bochum, DE";
 
 static char *symbols[] = {
   "code11",
