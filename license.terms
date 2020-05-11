@@ -3,8 +3,8 @@
 	  libzint from the maintainer Robin Stuart
           (backend license BSD-3 since May 2013; see also LICENSE.zint)
 
-  Copyright (C) 2014 Alexander Schoepe, Bochum, DE, <schoepe@users.sourceforge.net>
-		     Joerg Mehring, Bochum, DE
+  Copyright (C) 2014-2019 Alexander Schoepe, Bochum, DE, <alx.tcl@sowaswie.de>
+		          Joerg Mehring, Bochum, DE, <j.mehring@bjmehring.de>
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without modification,
