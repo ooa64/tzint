@@ -175,11 +175,11 @@ PROJECT = tzint
 !endif
 # get project version from row "AC_INIT([project], [????])"
 !if [echo DOTVERSION = \>> versions.vc] \
-   && [nmakehlp -V ..\configure.in tzint >> versions.vc]
+   && [nmakehlp -V ..\configure.ac tzint >> versions.vc]
 !endif
 # get zint version from row "AC_DEFINE([ZINT_VERSION],["????"])"
 !if [echo ZINTVERSION = \>> versions.vc] \
-   && [nmakehlp -V ..\configure.in ZINT_VERSION >> versions.vc]
+   && [nmakehlp -V ..\configure.ac ZINT_VERSION >> versions.vc]
 !endif
 !include "versions.vc"
 
@@ -226,6 +226,22 @@ DLLOBJS = \
 
 PRJHEADERS =
 
+!ifndef MY_TCL_INITSTUBS
+COMPILERFLAGS = $(COMPILERFLAGS) -DMY_TCL_INITSTUBS=\"$(TCL_DOTVERSION)\"
+!endif
+
+!if $(TCL_VERSION) < 90
+COMPILERFLAGS = $(COMPILERFLAGS) -DTcl_Size=int
+!endif
+
+!ifndef ALIGN98_HACK
+ALIGN98_HACK=0
+!endif
+
+!ifndef LOIMPACT
+LOIMPACT=0 
+!endif
+
 #-------------------------------------------------------------------------
 # Target names and paths ( shouldn't need changing )
 #-------------------------------------------------------------------------
@@ -271,7 +287,7 @@ cdebug	=
 ### Warnings are too many, can't support warnings into errors.
 cdebug	= -Zi -Od $(DEBUGFLAGS)
 !else
-cdebug	= -Zi -WX $(DEBUGFLAGS)
+cdebug	= -Zi $(DEBUGFLAGS)
 !endif
 
 ### Declarations common to all compiler options
