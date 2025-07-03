@@ -5009,7 +5009,7 @@ fi
 
 $as_echo "#define ZINT_VERSION \"2.4.4\"" >>confdefs.h
 
-$as_echo "#define MY_TCL_INITSTUBS \"8.5\"" >>confdefs.h
+$as_echo "#define MY_TCL_INITSTUBS \"8.5-\"" >>confdefs.h
 
 
 

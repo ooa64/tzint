@@ -116,7 +116,7 @@ fi
 
 
 AC_DEFINE(ZINT_VERSION, "2.4.4")
-AC_DEFINE(MY_TCL_INITSTUBS, "8.5")
+AC_DEFINE(MY_TCL_INITSTUBS, "8.5-")
 
 TEA_ADD_SOURCES([common.c render.c png.c library.c ps.c large.c reedsol.c gs1.c svg.c])
 TEA_ADD_SOURCES([code.c code128.c 2of5.c upcean.c telepen.c medical.c plessey.c rss.c])
