@@ -312,7 +312,7 @@ VPATH = $(srcdir):$(srcdir)/generic:$(srcdir)/unix:$(srcdir)/win:$(srcdir)/macos
 .c.@OBJEXT@:
 	$(COMPILE) -c `@CYGPATH@ $<` -o $@
 
-tzint.@OBJEXT@:	manifest.h
+$(lastword $(PKG_OBJECTS)): manifest.h
 
 $(srcdir)/manifest.uuid:
 	printf "git-" >$(srcdir)/manifest.uuid
