@@ -184,6 +184,20 @@ test encode-5.4 {eps is produced for a two dimensional symbol too} -body {
   expr {[string length $e] > 0}
 } -result 1
 
+test encode-5.5 {eps bounding box keeps the width it had before the 2.16.0 backend} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128 -scale 1
+  regexp {%%BoundingBox: 0 0 ([0-9]+) } $e -> w
+  set w
+} -result 79
+
+test encode-5.6 {eps and svg agree on the symbol width} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128
+  ::tzint::Encode svg s 12345678 -barcode code128
+  regexp {%%BoundingBox: 0 0 ([0-9]+) } $e -> ew
+  regexp {<svg width="([0-9]+)"} $s -> sw
+  expr {$ew == $sw}
+} -result 1
+
 
 #
 # svg output
@@ -203,6 +217,76 @@ test encode-6.3 {svg honours the requested foreground colour} -body {
   ::tzint::Encode svg s 12345678 -barcode code128 -fg 00ff00
   regexp -nocase {00ff00} $s
 } -result 1
+
+# zint 2.16 draws vector output at two units per module while tzint has always
+# handed out one unit per module here; tzint compensates for that. These two
+# tests pin the resulting size down.
+test encode-6.4 {svg keeps the module width it had before the 2.16.0 backend} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -scale 1
+  regexp {<svg width="([0-9]+)"} $s -> w
+  set w
+} -result 79
+
+test encode-6.5 {svg is half as wide as the raster output} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -scale 1
+  regexp {<svg width="([0-9]+)"} $s -> w
+  ::tzint::Encode bits b 12345678 -barcode code128 -scale 1 -stat st
+  expr {[dict get $st width] == 2 * $w}
+} -result 1
+
+test encode-6.7 {vectorscale zint gives the size zint draws by itself} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -scale 1 -vectorscale zint
+  regexp {<svg width="([0-9]+)"} $s -> w
+  set w
+} -result 158
+
+test encode-6.8 {vectorscale compat is the default} -body {
+  ::tzint::Encode svg a 12345678 -barcode code128
+  ::tzint::Encode svg b 12345678 -barcode code128 -vectorscale compat
+  expr {$a eq $b}
+} -result 1
+
+test encode-6.9 {vectorscale zint is twice the compat width} -body {
+  ::tzint::Encode svg a 12345678 -barcode code128 -vectorscale compat
+  ::tzint::Encode svg b 12345678 -barcode code128 -vectorscale zint
+  regexp {<svg width="([0-9]+)"} $a -> wa
+  regexp {<svg width="([0-9]+)"} $b -> wb
+  expr {$wb == 2 * $wa}
+} -result 1
+
+test encode-6.10 {vectorscale zint matches the raster width} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -vectorscale zint
+  regexp {<svg width="([0-9]+)"} $s -> w
+  ::tzint::Encode bits b 12345678 -barcode code128 -stat st
+  expr {$w == [dict get $st width]}
+} -result 1
+
+test encode-6.11 {vectorscale applies to eps as well} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128 -vectorscale zint
+  regexp {%%BoundingBox: 0 0 ([0-9]+) } $e -> w
+  set w
+} -result 158
+
+test encode-6.12 {vectorscale leaves the raster output alone} -body {
+  ::tzint::Encode bits a 12345678 -barcode code128 -vectorscale compat -stat sa
+  ::tzint::Encode bits b 12345678 -barcode code128 -vectorscale zint -stat sb
+  expr {[dict get $sa width] == [dict get $sb width]
+     && [dict get $sa height] == [dict get $sb height]}
+} -result 1
+
+test encode-6.13 {an unknown vectorscale value is rejected} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -vectorscale bogus
+} -returnCodes error -result {bad -vectorscale "bogus": must be compat or zint}
+
+test encode-6.6 {svg width scales with the scale option} -body {
+  set widths {}
+  foreach sc {0.5 1 2 4} {
+    ::tzint::Encode svg s 12345678 -barcode code128 -scale $sc
+    regexp {<svg width="([0-9]+)"} $s -> w
+    lappend widths $w
+  }
+  set widths
+} -result {40 79 158 316}
 
 
 #
@@ -229,6 +313,37 @@ test encode-7.2 {file written to disk matches the in-memory svg} -setup {
   set fromFile [read $fh]
   close $fh
   expr {[string trim $fromFile] eq [string trim $s]}
+} -cleanup {
+  file delete -force $out
+} -result 1
+
+test encode-7.5 {vectorscale reaches file output too} -setup {
+  set out1 [file join [temporaryDirectory] tzint-encode-7-5a.svg]
+  set out2 [file join [temporaryDirectory] tzint-encode-7-5b.svg]
+  file delete -force $out1 $out2
+} -body {
+  ::tzint::Encode file $out1 12345678 -barcode code128
+  ::tzint::Encode file $out2 12345678 -barcode code128 -vectorscale zint
+  set widths {}
+  foreach f [list $out1 $out2] {
+    set fh [open $f rb]
+    set content [read $fh]
+    close $fh
+    regexp {<svg width="([0-9]+)"} $content -> w
+    lappend widths $w
+  }
+  set widths
+} -cleanup {
+  file delete -force $out1 $out2
+} -result {79 158}
+
+test encode-7.4 {file output of a raster format is not scaled like vector output} -setup {
+  set out [file join [temporaryDirectory] tzint-encode-7-4.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -stat st
+  # the raster bitmap keeps its own size, only vector output is halved
+  expr {[dict get $st width] == 158}
 } -cleanup {
   file delete -force $out
 } -result 1

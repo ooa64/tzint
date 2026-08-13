@@ -177,6 +177,20 @@ static const struct {
 };
 
 
+// Since 2.16 zint draws vector output at two units per module, the same size the
+// raster output has always used. The 2.4.4 vector code tzint carried used one
+// unit per module, so -scale 1 gave a symbol half that size. Halving the scale
+// for vector output keeps every -scale value giving the size it gave before;
+// -vectorscale zint turns that off and hands -scale to zint untouched.
+// zint picks the format from the file name extension; EMF, EPS and SVG are the
+// vector ones (see the filetypes table in library.c).
+static int IsVectorFile(const char *name) {
+  return Tcl_StringCaseMatch(name, "*.svg", TCL_MATCH_NOCASE)
+      || Tcl_StringCaseMatch(name, "*.eps", TCL_MATCH_NOCASE)
+      || Tcl_StringCaseMatch(name, "*.emf", TCL_MATCH_NOCASE);
+}
+
+
 static int HexColorCheck(Tcl_Obj *optval, char *color) {
   char *cp;
   Tcl_Size len;
@@ -283,7 +297,7 @@ static void Bits(Tcl_Interp *interp, Tcl_Obj *list, char onchar, char offchar, s
 
 
 static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[]) {
-  int err = 0, i, index, cmd, rc, ival, angle = 0, stat = -1;
+  int err = 0, i, index, cmd, rc, ival, angle = 0, stat = -1, vscaleCompat = 1;
   Tcl_Size len;
   struct zint_symbol *zsymbol;
   char *cp, onchar = '1', offchar = '0';
@@ -313,13 +327,13 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     "-barcode", "-symbology", "-height", "-whitespace", "-bind", "-box", "-border",
     "-fg", "-bg", "-foreground", "-background", "-cols", "-vers", "-rotate", "-security",
     "-mode", "-primary", "-scale", "-format", "-notext", "-square", "-init", "-smalltext",
-    "-onchar", "-offchar", "-opt1", "-opt2", "-opt3", "-stat", NULL
+    "-onchar", "-offchar", "-opt1", "-opt2", "-opt3", "-stat", "-vectorscale", NULL
   };
   enum options {
     TZINT_BARCODE, TZINT_SYMBOLOGY, TZINT_HEIGHT, TZINT_WHITESPACE, TZINT_BIND, TZINT_BOX, TZINT_BORDER,
     TZINT_FG, TZINT_BG, TZINT_FOREGROUND, TZINT_BACKGROUND, TZINT_COLS, TZINT_VERS, TZINT_ROTATE, TZINT_SECURITY,
     TZINT_MODE, TZINT_PRIMARY, TZINT_SCALE, TZINT_FORMAT, TZINT_NO_TEXT, TZINT_SQUARE, TZINT_INIT, TZINT_SMALLTEXT,
-    TZINT_ONCHAR, TZINT_OFFCHAR, TZINT_OPT_1, TZINT_OPT_2, TZINT_OPT_3, TZINT_STAT
+    TZINT_ONCHAR, TZINT_OFFCHAR, TZINT_OPT_1, TZINT_OPT_2, TZINT_OPT_3, TZINT_STAT, TZINT_VECTORSCALE
   };
   static const char *rotate[] = {
     "0", "90", "180", "270", NULL
@@ -332,6 +346,12 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
   };
   enum format {
     TZINT_UNICODE, TZINT_BINARY, TZINT_GS1
+  };
+  static const char *vectorscale[] = {
+    "compat", "zint", NULL
+  };
+  enum vectorscale {
+    TZINT_VSCALE_COMPAT, TZINT_VSCALE_ZINT
   };
 
   if (objc < 2) {
@@ -673,6 +693,14 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       case TZINT_STAT:
         stat = i + 1;
 	break;
+
+      case TZINT_VECTORSCALE:
+	if (Tcl_GetIndexFromObj(interp, objv[i+1], (const char **)vectorscale, "-vectorscale", 0, &ival) == TCL_ERROR) {
+	  err = 1;
+	  break;
+	}
+	vscaleCompat = ((enum vectorscale) ival == TZINT_VSCALE_COMPAT);
+	break;
     }
     if (err) {
       goto cleanup;
@@ -701,6 +729,9 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       goto cleanup;
     }
     strcpy(zsymbol->outfile, cp);
+    if (vscaleCompat && IsVectorFile(zsymbol->outfile)) {
+      zsymbol->scale /= 2.0f;   // see IsVectorFile
+    }
     cp = Tcl_GetStringFromObj(objv[3], &len);
     rc = ZBarcode_Encode(zsymbol, (unsigned char *)cp, len);
     if (rc != 0) {
@@ -713,6 +744,9 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     // of to disk; the output format is taken from the extension of outfile
     zsymbol->output_options |= BARCODE_MEMORY_FILE;
     strcpy(zsymbol->outfile, ((enum command) cmd == TZINT_CMD_EPS)? "out.eps": "out.svg");
+    if (vscaleCompat) {
+      zsymbol->scale /= 2.0f;   // see IsVectorFile
+    }
     cp = Tcl_GetStringFromObj(objv[3], &len);
     rc = ZBarcode_Encode_and_Print(zsymbol, (unsigned char *)cp, len, angle);
     if (rc != 0) {
