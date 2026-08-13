@@ -121,6 +121,12 @@ vector formats EMF, EPS and SVG, chosen by the extension of the file name. A
 TXT extension writes a hex dump of the encoded data; for a matrix of modules
 use the bits command.
 
+The resolution stored in the file is set with -dpi, or with -dpmm in the dots
+per millimetre libzint uses. It reaches BMP, EMF, PCX, PNG and TIF; without it
+the file carries no resolution.
+
+	::tzint::Encode file symbol.png "Hello Tcl" -barcode code128 -dpi 300
+
 For vector output tzint draws one unit per module, the size it has always
 produced, while libzint itself draws two. The -vectorscale option selects
 between the two:

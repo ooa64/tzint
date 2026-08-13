@@ -641,6 +641,13 @@ proc pngSize {path} {
   return [list $w $h]
 }
 
+proc readFileBinary {path} {
+  set fh [open $path rb]
+  set content [read $fh]
+  close $fh
+  return $content
+}
+
 proc writeSymbol {ext args} {
   set out [file join [temporaryDirectory] tzint-fmt.$ext]
   file delete -force $out
@@ -798,8 +805,130 @@ test encode-13.5 {the alpha short form is the long form doubled} -setup {
   file delete -force $short $long
 } -result 1
 
+#
+# output resolution
+#
+# zint keeps the resolution as dots per mm and writes it to BMP, EMF, PCX, PNG
+# and TIF. In a PNG it lands in the pHYs chunk as pixels per metre.
+#
+
+proc pngResolution {path} {
+  set fh [open $path rb]
+  set content [read $fh]
+  close $fh
+  set i [string first pHYs $content]
+  if {$i < 0} { return none }
+  binary scan [string range $content [expr {$i + 4}] [expr {$i + 11}]] IuIu x y
+  return [list $x $y]
+}
+
+test encode-14.1 {without a resolution the png carries no pHYs chunk} -setup {
+  set out [file join [temporaryDirectory] tzint-14-1.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result none
+
+test encode-14.2 {dpi is written as pixels per metre} -setup {
+  set out [file join [temporaryDirectory] tzint-14-2.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -dpi 300
+  # 300 dpi is 300 / 25.4 dots per mm, that is 11811 pixels per metre
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result {11811 11811}
+
+test encode-14.3 {dpmm is passed through unconverted} -setup {
+  set out [file join [temporaryDirectory] tzint-14-3.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -dpmm 12
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result {12000 12000}
+
+test encode-14.4 {a resolution of zero leaves the chunk out again} -setup {
+  set out [file join [temporaryDirectory] tzint-14-4.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -dpi 0
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result none
+
+test encode-14.5 {the last of the two options wins} -setup {
+  set out [file join [temporaryDirectory] tzint-14-5.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -dpi 300 -dpmm 12
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result {12000 12000}
+
+test encode-14.6 {the resolution reaches every format that carries one} -body {
+  set bad {}
+  foreach ext {png bmp pcx tif emf} {
+    lassign [writeSymbol $ext] rc status size plain
+    set plainContent [readFileBinary $plain]
+    file delete -force $plain
+    lassign [writeSymbol $ext -dpi 600] rc status size withDpi
+    set dpiContent [readFileBinary $withDpi]
+    file delete -force $withDpi
+    if {$plainContent eq $dpiContent} { lappend bad $ext }
+  }
+  set bad
+} -result {}
+
+test encode-14.7 {formats without a resolution field are unaffected} -body {
+  set changed {}
+  foreach ext {gif svg eps} {
+    lassign [writeSymbol $ext] rc status size plain
+    set plainContent [readFileBinary $plain]
+    file delete -force $plain
+    lassign [writeSymbol $ext -dpi 600] rc status size withDpi
+    set dpiContent [readFileBinary $withDpi]
+    file delete -force $withDpi
+    if {$plainContent ne $dpiContent} { lappend changed $ext }
+  }
+  set changed
+} -result {}
+
+test encode-14.8 {a resolution out of range is rejected} -body {
+  set accepted {}
+  foreach {opt val} {-dpi -1 -dpi 25401 -dpmm -1 -dpmm 1001} {
+    if {![catch {::tzint::Encode bits b 12345678 -barcode code128 $opt $val}]} {
+      lappend accepted "$opt $val"
+    }
+  }
+  set accepted
+} -result {}
+
+test encode-14.9 {the range limits themselves are accepted} -body {
+  set rejected {}
+  foreach {opt val} {-dpi 0 -dpi 25400 -dpmm 0 -dpmm 1000} {
+    if {[catch {::tzint::Encode bits b 12345678 -barcode code128 $opt $val}]} {
+      lappend rejected "$opt $val"
+    }
+  }
+  set rejected
+} -result {}
+
+test encode-14.10 {a non numeric resolution is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -dpi notanumber
+} -returnCodes error -match glob -result {expected floating-point number*}
+
 # cleanup
+rename pngResolution {}
 rename pngSize {}
 rename writeSymbol {}
+rename readFileBinary {}
 ::tcltest::cleanupTests
 return

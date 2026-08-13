@@ -71,6 +71,8 @@ The scale of the image can be altered using the \fB\-scale\fR \fIinteger\fR opti
 .br
 For vector output, that is the \fBeps\fR and \fBsvg\fR commands and the \fBfile\fR command writing EMF, EPS or SVG, tzint draws one unit per module. libzint itself draws two units per module for these formats, the same size the raster output uses. \fB\-vectorscale\fR \fIcompat\fR (the default) keeps the size tzint has always produced, \fB\-vectorscale\fR \fIzint\fR passes \fB\-scale\fR to libzint untouched and yields a symbol twice as wide, matching the raster output. The option has no effect on raster output.
 .PP
+The resolution recorded in the output file can be set with \fB\-dpi\fR \fInumber\fR or, in the unit libzint itself uses, with \fB\-dpmm\fR \fInumber\fR dots per millimetre. One is converted into the other, so whichever is given last applies. The value reaches the formats that carry a resolution, \fIBMP\fR, \fIEMF\fR, \fIPCX\fR, \fIPNG\fR and \fITIF\fR, and is ignored by the others. Without either option, or with a value of \fI0\fR, the file carries no resolution at all, which is the default. The upper limit is \fI25400\fR dpi, that is \fI1000\fR dots per millimetre.
+.PP
 Input modes:
 .br
 GS1 data can be encoded in a number of symbologies. Application identifiers are enclosed in [square brackets] followed by the data to be encoded. To encode GS1 data use \fB\-format\fR \fIgs1\fR. GS1 mode is assumed (and doesn't need to be set) for EAN-128, DataBar and Composite symbologies but is also available for Code 16k, Data Matrix (ECC 200 only), Aztec Code and QR Code.

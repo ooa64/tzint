@@ -342,13 +342,15 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     "-barcode", "-symbology", "-height", "-whitespace", "-bind", "-box", "-border",
     "-fg", "-bg", "-foreground", "-background", "-cols", "-vers", "-rotate", "-security",
     "-mode", "-primary", "-scale", "-format", "-notext", "-square", "-init", "-smalltext",
-    "-onchar", "-offchar", "-opt1", "-opt2", "-opt3", "-stat", "-vectorscale", NULL
+    "-onchar", "-offchar", "-opt1", "-opt2", "-opt3", "-stat", "-vectorscale",
+    "-dpi", "-dpmm", NULL
   };
   enum options {
     TZINT_BARCODE, TZINT_SYMBOLOGY, TZINT_HEIGHT, TZINT_WHITESPACE, TZINT_BIND, TZINT_BOX, TZINT_BORDER,
     TZINT_FG, TZINT_BG, TZINT_FOREGROUND, TZINT_BACKGROUND, TZINT_COLS, TZINT_VERS, TZINT_ROTATE, TZINT_SECURITY,
     TZINT_MODE, TZINT_PRIMARY, TZINT_SCALE, TZINT_FORMAT, TZINT_NO_TEXT, TZINT_SQUARE, TZINT_INIT, TZINT_SMALLTEXT,
-    TZINT_ONCHAR, TZINT_OFFCHAR, TZINT_OPT_1, TZINT_OPT_2, TZINT_OPT_3, TZINT_STAT, TZINT_VECTORSCALE
+    TZINT_ONCHAR, TZINT_OFFCHAR, TZINT_OPT_1, TZINT_OPT_2, TZINT_OPT_3, TZINT_STAT, TZINT_VECTORSCALE,
+    TZINT_DPI, TZINT_DPMM
   };
   static const char *rotate[] = {
     "0", "90", "180", "270", NULL
@@ -708,6 +710,35 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
 
       case TZINT_STAT:
         stat = i + 1;
+	break;
+
+      // zint stores the resolution as dots per mm and writes it to BMP, EMF,
+      // PCX, PNG and TIF; 0 leaves the file without a resolution. Its own upper
+      // bound is 1000 dpmm, which is 25400 dpi.
+      case TZINT_DPI:
+	if (Tcl_GetDoubleFromObj(interp, objv[i+1], &dval) == TCL_OK) {
+	  if (dval < 0 || dval > 25400) {
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj("dpi out of range", -1));
+	    err = 1;
+	  } else {
+	    zsymbol->dpmm = (float)(dval / 25.4);
+	  }
+	} else {
+	  err = 1;
+	}
+	break;
+
+      case TZINT_DPMM:
+	if (Tcl_GetDoubleFromObj(interp, objv[i+1], &dval) == TCL_OK) {
+	  if (dval < 0 || dval > 1000) {
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj("dpmm out of range", -1));
+	    err = 1;
+	  } else {
+	    zsymbol->dpmm = (float)dval;
+	  }
+	} else {
+	  err = 1;
+	}
 	break;
 
       case TZINT_VECTORSCALE:
