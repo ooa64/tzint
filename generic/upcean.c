@@ -1,20 +1,20 @@
-/*  upcean.c - Handles UPC, EAN and ISBN
-
+/* upcean.c - Handles UPC, EAN and ISBN */
+/*
     libzint - the open source barcode library
-    Copyright (C) 2008 Robin Stuart <robin@zint.org.uk>
+    Copyright (C) 2008-2025 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -25,784 +25,1120 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
-*/
+ */
+/* SPDX-License-Identifier: BSD-3-Clause */
 
-#define SODIUM	"0123456789+"
-#define EAN2	102
-#define EAN5	105
+#define SODIUM_PLS_SPC_F    (IS_NUM_F | IS_PLS_F | IS_SPC_F) /* SODIUM "0123456789+ " */
+#define ISBNX_SANE_F        (IS_NUM_F | IS_UX__F) /* ISBNX_SANE "0123456789X" */
+/* ISBNX_ADDON_SANE "0123456789Xx+ " */
+#define ISBNX_ADDON_SANE_F  (IS_NUM_F | IS_UX__F | IS_LX__F | IS_PLS_F | IS_SPC_F)
 
+#include <assert.h>
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include "common.h"
+#include "gs1.h"
 
-/* UPC and EAN tables checked against EN 797:1996 */
+/* UPC and EAN tables from ISO/IEC 15420:2009 */
 
-static const char *UPCParity0[10] = {"BBBAAA", "BBABAA", "BBAABA", "BBAAAB", "BABBAA", "BAABBA", "BAAABB",
-	"BABABA", "BABAAB", "BAABAB"}; /* Number set for UPC-E symbol (EN Table 4) */
-static const char *UPCParity1[10] = {"AAABBB", "AABABB", "AABBAB", "AABBBA", "ABAABB", "ABBAAB", "ABBBAA",
-	"ABABAB", "ABABBA", "ABBABA"}; /* Not covered by BS EN 797:1995 */
-static const char *EAN2Parity[4] = {"AA", "AB", "BA", "BB"}; /* Number sets for 2-digit add-on (EN Table 6) */
-static const char *EAN5Parity[10] = {"BBAAA", "BABAA", "BAABA", "BAAAB", "ABBAA", "AABBA", "AAABB", "ABABA",
-	"ABAAB", "AABAB"}; /* Number set for 5-digit add-on (EN Table 7) */
-static const char *EAN13Parity[10] = {"AAAAA", "ABABB", "ABBAB", "ABBBA", "BAABB", "BBAAB", "BBBAA", "BABAB",
-	"BABBA", "BBABA"}; /* Left hand of the EAN-13 symbol (EN Table 3) */
-static const char *EANsetA[10] = {"3211", "2221", "2122", "1411", "1132", "1231", "1114", "1312", "1213",
-	"3112"}; /* Representation set A and C (EN Table 1) */
-static const char *EANsetB[10] = {"1123", "1222", "2212", "1141", "2311", "1321", "4111", "2131", "3121",
-	"2113"}; /* Representation set B (EN Table 1) */
+/* Number set for UPC-E Symbol (Table 4) */
+static const char UPCParity0[10][6] = {
+    {'B','B','B','A','A','A'}, {'B','B','A','B','A','A'}, {'B','B','A','A','B','A'}, {'B','B','A','A','A','B'},
+    {'B','A','B','B','A','A'}, {'B','A','A','B','B','A'}, {'B','A','A','A','B','B'}, {'B','A','B','A','B','A'},
+    {'B','A','B','A','A','B'}, {'B','A','A','B','A','B'}
+};
 
-char upc_check(char source[])
-{ /* Calculate the correct check digit for a UPC barcode */
-	unsigned int i, count, check_digit;
+/* Number set for UPC-E number system 1 (not in ISO/IEC 15420:2009, Table 4 inverted) */
+static const char UPCParity1[10][6] = {
+    {'A','A','A','B','B','B'}, {'A','A','B','A','B','B'}, {'A','A','B','B','A','B'}, {'A','A','B','B','B','A'},
+    {'A','B','A','A','B','B'}, {'A','B','B','A','A','B'}, {'A','B','B','B','A','A'}, {'A','B','A','B','A','B'},
+    {'A','B','A','B','B','A'}, {'A','B','B','A','B','A'}
+};
 
-	count = 0;
+/* Number sets for 2-digit add-on (Table 6) */
+static const char EAN2Parity[4][2] = {
+    {'A','A'}, {'A','B'}, {'B','A'}, {'B','B'}
+};
 
-	for (i = 0; i < strlen(source); i++) {
-		count += ctoi(source[i]);
+/* Number sets for 5-digit add-on (Table 7) */
+static const char EAN5Parity[10][5] = {
+    {'B','B','A','A','A'}, {'B','A','B','A','A'}, {'B','A','A','B','A'}, {'B','A','A','A','B'}, {'A','B','B','A','A'},
+    {'A','A','B','B','A'}, {'A','A','A','B','B'}, {'A','B','A','B','A'}, {'A','B','A','A','B'}, {'A','A','B','A','B'}
+};
 
-		if (!(i & 1)) {
-			count += 2 * (ctoi(source[i]));
-		}
-	}
+/* Left half of EAN-13 symbol (Table 3) */
+static const char EAN13Parity[10][5] = {
+    {'A','A','A','A','A'}, {'A','B','A','B','B'}, {'A','B','B','A','B'}, {'A','B','B','B','A'}, {'B','A','A','B','B'},
+    {'B','B','A','A','B'}, {'B','B','B','A','A'}, {'B','A','B','A','B'}, {'B','A','B','B','A'}, {'B','B','A','B','A'}
+};
 
-	check_digit = 10 - (count%10);
-	if (check_digit == 10) { check_digit = 0; }
-	return itoc(check_digit);
+/* Number set A (and C, which is identical) (Table 1) */
+static const char EANsetA[10][4] = {
+    {'3','2','1','1'}, {'2','2','2','1'}, {'2','1','2','2'}, {'1','4','1','1'}, {'1','1','3','2'},
+    {'1','2','3','1'}, {'1','1','1','4'}, {'1','3','1','2'}, {'1','2','1','3'}, {'3','1','1','2'}
+};
+
+/* Number set B (Table 1) */
+static const char EANsetB[10][4] = {
+    {'1','1','2','3'}, {'1','2','2','2'}, {'2','2','1','2'}, {'1','1','4','1'}, {'2','3','1','1'},
+    {'1','3','2','1'}, {'4','1','1','1'}, {'2','1','3','1'}, {'3','1','2','1'}, {'2','1','1','3'}
+};
+
+/* Write UPC-A or EAN-8 encodation to destination `d` */
+static void upca_set_dest(const unsigned char source[], const int length, char *d) {
+    int i, half_way;
+
+    half_way = length / 2;
+
+    /* Start character */
+    memcpy(d, "111", 3);
+    d += 3;
+
+    for (i = 0; i < length; i++, d += 4) {
+        if (i == half_way) {
+            /* Middle character - separates manufacturer no. from product no. - also inverts right hand characters */
+            memcpy(d, "11111", 5);
+            d += 5;
+        }
+
+        memcpy(d, EANsetA[source[i] - '0'], 4);
+    }
+
+    /* Stop character */
+    memcpy(d, "111", 4); /* Include terminating NUL */
 }
 
-void upca_draw(char source[], char dest[])
-{ /* UPC A is usually used for 12 digit numbers, but this function takes a source of any length */
-	unsigned int i, half_way;
+/* Make a UPC-A barcode, allowing for composite if `cc_rows` set */
+static int upca_cc(struct zint_symbol *symbol, const unsigned char source[], int length, char dest[],
+                    const int cc_rows) {
+    const unsigned char *gtin = symbol->text;
+    int error_number = 0;
 
-	half_way = strlen(source) / 2;
+    z_hrt_cpy_nochk(symbol, source, length);
 
-	/* start character */
-	concat (dest, "111");
+    if (length == 11) {
+        z_hrt_cat_chr_nochk(symbol, zint_gs1_check_digit(gtin, 11));
+    } else {
+        if (source[length - 1] != zint_gs1_check_digit(gtin, 11)) {
+            return ZEXT z_errtxtf(ZINT_ERROR_INVALID_CHECK, symbol, 270,
+                                    "Invalid check digit '%1$c', expecting '%2$c'",
+                                    source[length - 1], zint_gs1_check_digit(gtin, 11));
+        }
+    }
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
+        printf("UPC-A: %s, gtin: %s, Check digit: %c\n", source, gtin, gtin[symbol->text_length - 1]);
+    }
 
-	for(i = 0; i <= strlen(source); i++)
-	{
-		if (i == half_way)
-		{
-			/* middle character - separates manufacturer no. from product no. */
-			/* also inverts right hand characters */
-			concat(dest, "11111");
-		}
+    upca_set_dest(gtin, symbol->text_length, dest);
 
-		lookup(NEON, EANsetA, source[i], dest);
-	}
+    if (symbol->output_options & COMPLIANT_HEIGHT) {
+        /* ISO/IEC 15420:2009 4.3.3 Bar height UPC-A 22.85mm / 0.33mm (X) ~ 69.24,
+           same as minimum GS1 General Specifications 21.0.1 5.12.3.1 */
+        const float height = 69.242424f; /* 22.85 / 0.33 */
+        if (symbol->symbology == BARCODE_UPCA_CC) {
+            symbol->height = height; /* Pass back min row == default height */
+        } else {
+            error_number = z_set_height(symbol, height, height, 0.0f, 0 /*no_errtxt*/);
+        }
+    } else {
+        const float height = 50.0f;
+        if (symbol->symbology == BARCODE_UPCA_CC) {
+            symbol->height = height - cc_rows * 2 - 6.0f;
+        } else {
+            (void) z_set_height(symbol, 0.0f, height, 0.0f, 1 /*no_errtxt*/);
+        }
+    }
 
-	/* stop character */
-	concat (dest, "111");
+    return error_number;
 }
 
-void upca(struct zint_symbol *symbol, unsigned char source[], char dest[])
-{ /* Make a UPC A barcode when we haven't been given the check digit */
-	int length;
-	char gtin[15];
-
-	strcpy(gtin, (char*)source);
-	length = strlen(gtin);
-	gtin[length] = upc_check(gtin);
-	gtin[length + 1] = '\0';
-	upca_draw(gtin, dest);
-	ustrcpy(symbol->text, (unsigned char*)gtin);
+/* Make a UPC-A */
+static int upca(struct zint_symbol *symbol, const unsigned char source[], int length, char dest[]) {
+    return upca_cc(symbol, source, length, dest, 0 /*cc_rows*/);
 }
 
-void upce(struct zint_symbol *symbol, unsigned char source[], char dest[])
-{ /* UPC E is a zero-compressed version of UPC A */
-	unsigned int i, num_system;
-	char emode, equivalent[12], check_digit, parity[8], temp[8];
-	char hrt[9];
+/* Make a UPC-E, allowing for composite if `cc_rows` set */
+static int upce_cc(struct zint_symbol *symbol, unsigned char source[], int length, char *d, const int cc_rows,
+                    unsigned char equivalent[12]) {
+    int i;
+    int num_system = 0;
+    char emode, check_digit;
+    const char *parity;
+    char src_check_digit = '\0';
+    const unsigned char *hrt = symbol->text;
+    int error_number = 0;
 
-	/* Two number systems can be used - system 0 and system 1 */
-	if(ustrlen(source) == 7) {
-		switch(source[0]) {
-			case '0': num_system = 0; break;
-			case '1': num_system = 1; break;
-			default: num_system = 0; source[0] = '0'; break;
-		}
-		strcpy(temp, (char*)source);
-		strcpy(hrt, (char*)source);
-		for(i = 1; i <= 7; i++) {
-			source[i - 1] = temp[i];
-		}
-	}
-	else {
-		num_system = 0;
-		hrt[0] = '0';
-		hrt[1] = '\0';
-		concat(hrt, (char*)source);
-	}
+    if (length == 8 || symbol->symbology == BARCODE_UPCE_CHK) {
+        /* Will validate later */
+        src_check_digit = source[--length];
+    }
 
-	/* Expand the zero-compressed UPCE code to make a UPCA equivalent (EN Table 5) */
-	emode = source[5];
-	for(i = 0; i < 11; i++) {
-		equivalent[i] = '0';
-	}
-	if(num_system == 1) { equivalent[0] = temp[0]; }
-	equivalent[1] = source[0];
-	equivalent[2] = source[1];
-	equivalent[11] = '\0';
+    /* Two number systems can be used - number system 0 (standard) and number system 1 (non-standard) */
+    if (length == 7) {
+        switch (source[0]) {
+            case '0':
+                z_hrt_cpy_nochk(symbol, source, length);
+                break;
+            case '1':
+                num_system = 1;
+                z_hrt_cpy_nochk(symbol, source, length);
+                break;
+            default:
+                /* Overwrite HRT first char with '0' and ignore first source char */
+                z_hrt_cpy_cat_nochk(symbol, NULL, 0, '0', source + 1, length - 1);
+                error_number = z_errtxt(ZINT_WARN_INVALID_OPTION, symbol, 851,
+                                        "Ignoring first digit which is not '0' or '1'");
+                break;
+        }
+        for (i = 1; i <= length; i++) {
+            source[i - 1] = hrt[i];
+        }
+        length--;
+    } else {
+        /* Length 6, insert leading zero */
+        z_hrt_cpy_cat_nochk(symbol, NULL, 0, '0', source, length);
+    }
 
-	switch(emode)
-	{
-		case '0':
-		case '1':
-		case '2':
-			equivalent[3] = emode;
-			equivalent[8] = source[2];
-			equivalent[9] = source[3];
-			equivalent[10] = source[4];
-			break;
-		case '3':
-			equivalent[3] = source[2];
-			equivalent[9] = source[3];
-			equivalent[10] = source[4];
-			if(((source[2] == '0') || (source[2] == '1')) || (source[2] == '2')) {
-				/* Note 1 - "X3 shall not be equal to 0, 1 or 2" */
-				strcpy(symbol->errtxt, "Invalid UPC-E data");
-			}
-			break;
-		case '4':
-			equivalent[3] = source[2];
-			equivalent[4] = source[3];
-			equivalent[10] = source[4];
-			if(source[3] == '0') {
-				/* Note 2 - "X4 shall not be equal to 0" */
-				strcpy(symbol->errtxt, "Invalid UPC-E data");
-			}
-			break;
-		case '5':
-		case '6':
-		case '7':
-		case '8':
-		case '9':
-			equivalent[3] = source[2];
-			equivalent[4] = source[3];
-			equivalent[5] = source[4];
-			equivalent[10] = emode;
-			if(source[4] == '0') {
-				/* Note 3 - "X5 shall not be equal to 0" */
-				strcpy(symbol->errtxt, "Invalid UPC-E data");
-			}
-			break;
-	}
+    /* Expand the zero-compressed UPC-E code to make a UPC-A equivalent (Table 5) */
+    emode = source[5];
+    memset(equivalent, '0', 11);
+    if (num_system == 1) {
+        equivalent[0] = hrt[0];
+    }
+    equivalent[1] = source[0];
+    equivalent[2] = source[1];
 
-	/* Get the check digit from the expanded UPCA code */
+    switch (emode) {
+        case '0':
+        case '1':
+        case '2':
+            equivalent[3] = emode;
+            equivalent[8] = source[2];
+            equivalent[9] = source[3];
+            equivalent[10] = source[4];
+            break;
+        case '3':
+            equivalent[3] = source[2];
+            equivalent[9] = source[3];
+            equivalent[10] = source[4];
+            if (source[2] == '0' || source[2] == '1' || source[2] == '2') {
+                /* Note 1 - "X3 shall not be equal to 0, 1 or 2" */
+                return z_errtxtf(ZINT_ERROR_INVALID_DATA, symbol, 271,
+                            "For this UPC-E zero suppression, 3rd character cannot be \"0\", \"1\" or \"2\" (%.*s)",
+                            length, source);
+            }
+            break;
+        case '4':
+            equivalent[3] = source[2];
+            equivalent[4] = source[3];
+            equivalent[10] = source[4];
+            if (source[3] == '0') {
+                /* Note 2 - "X4 shall not be equal to 0" */
+                return z_errtxtf(ZINT_ERROR_INVALID_DATA, symbol, 272,
+                                "For this UPC-E zero suppression, 4th character cannot be \"0\" (%.*s)",
+                                length, source);
+            }
+            break;
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+            equivalent[3] = source[2];
+            equivalent[4] = source[3];
+            equivalent[5] = source[4];
+            equivalent[10] = emode;
+            if (source[4] == '0') {
+                /* Note 3 - "X5 shall not be equal to 0" */
+                return z_errtxtf(ZINT_ERROR_INVALID_DATA, symbol, 273,
+                                "For this UPC-E zero suppression, 5th character cannot be \"0\" (%.*s)",
+                                length, source);
+            }
+            break;
+    }
 
-	check_digit = upc_check(equivalent);
+    /* Get the check digit from the expanded UPC-A code */
 
-	/* Use the number system and check digit information to choose a parity scheme */
-	if(num_system == 1) {
-		strcpy(parity, UPCParity1[ctoi(check_digit)]);
-	} else {
-		strcpy(parity, UPCParity0[ctoi(check_digit)]);
-	}
+    check_digit = zint_gs1_check_digit(equivalent, 11);
 
-	/* Take all this information and make the barcode pattern */
+    if (src_check_digit && src_check_digit != check_digit) {
+        return ZEXT z_errtxtf(ZINT_ERROR_INVALID_CHECK, symbol, 274, "Invalid check digit '%1$c', expecting '%2$c'",
+                                src_check_digit, check_digit);
+    }
+    equivalent[11] = check_digit;
 
-	/* start character */
-	concat (dest, "111");
+    /* Use the number system and check digit information to choose a parity scheme */
+    if (num_system == 1) {
+        parity = UPCParity1[z_ctoi(check_digit)];
+    } else {
+        parity = UPCParity0[z_ctoi(check_digit)];
+    }
 
-	for(i = 0; i <= ustrlen(source); i++) {
-		switch(parity[i]) {
-			case 'A': lookup(NEON, EANsetA, source[i], dest); break;
-			case 'B': lookup(NEON, EANsetB, source[i], dest); break;
-		}
-	}
+    /* Take all this information and make the barcode pattern */
 
-	/* stop character */
-	concat (dest, "111111");
-	
-	hrt[7] = check_digit;
-	hrt[8] = '\0';
-	ustrcpy(symbol->text, (unsigned char*)hrt);
+    /* Start character */
+    memcpy(d, "111", 3);
+    d += 3;
+
+    for (i = 0; i < length; i++, d += 4) {
+        switch (parity[i]) {
+            case 'A':
+                memcpy(d, EANsetA[source[i] - '0'], 4);
+                break;
+            case 'B':
+                memcpy(d, EANsetB[source[i] - '0'], 4);
+                break;
+        }
+    }
+
+    /* Stop character */
+    memcpy(d, "111111", 7); /* Include terminating NUL */
+
+    z_hrt_cat_chr_nochk(symbol, check_digit);
+
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
+        printf("UPC-E: %s, equivalent: %.11s, hrt: %.8s, Check digit: %c\n", source, equivalent, hrt, check_digit);
+    }
+
+    if (symbol->output_options & COMPLIANT_HEIGHT) {
+        /* ISO/IEC 15420:2009 4.3.3 Bar height UPC-E 22.85mm / 0.33mm (X) ~ 69.24,
+           same as minimum GS1 General Specifications 21.0.1 5.12.3.1 */
+        const float height = 69.242424f; /* 22.85 / 0.33 */
+        if (symbol->symbology == BARCODE_UPCE_CC) {
+            symbol->height = height; /* Pass back min row == default height */
+        } else {
+            int warn_number = z_set_height(symbol, height, height, 0.0f, 0 /*no_errtxt*/);
+            if (warn_number) {
+                error_number = warn_number; /* Trump first char not '0' or '1' warning if any */
+            }
+        }
+    } else {
+        const float height = 50.0f;
+        if (symbol->symbology == BARCODE_UPCE_CC) {
+            symbol->height = height - cc_rows * 2 - 6.0f;
+        } else {
+            (void) z_set_height(symbol, 0.0f, height, 0.0f, 1 /*no_errtxt*/);
+        }
+    }
+
+    return error_number;
 }
 
-
-void add_on(unsigned char source[], char dest[], int mode)
-{ /* EAN-2 and EAN-5 add-on codes */
-	char parity[6];
-	unsigned int i, code_type;
-
-	/* If an add-on then append with space */
-	if (mode != 0)
-	{
-		concat(dest, "9");
-	}
-
-	/* Start character */
-	concat (dest, "112");
-
-	/* Determine EAN2 or EAN5 add-on */
-	if(ustrlen(source) == 2)
-	{
-		code_type = EAN2;
-	}
-	else
-	{
-		code_type = EAN5;
-	}
-
-	/* Calculate parity for EAN2 */
-	if(code_type == EAN2)
-	{
-		int code_value, parity_bit;
-
-		code_value = (10 * ctoi(source[0])) + ctoi(source[1]);
-		parity_bit = code_value%4;
-		strcpy(parity, EAN2Parity[parity_bit]);
-	}
-
-	if(code_type == EAN5)
-	{
-		int values[6], parity_sum, parity_bit;
-
-		for(i = 0; i < 6; i++)
-		{
-			values[i] = ctoi(source[i]);
-		}
-
-		parity_sum = (3 * (values[0] + values[2] + values[4]));
-		parity_sum += (9 * (values[1] + values[3]));
-
-		parity_bit = parity_sum%10;
-		strcpy(parity, EAN5Parity[parity_bit]);
-	}
-
-	for(i = 0; i < ustrlen(source); i++)
-	{
-		switch(parity[i]) {
-			case 'A': lookup(NEON, EANsetA, source[i], dest); break;
-			case 'B': lookup(NEON, EANsetB, source[i], dest); break;
-		}
-
-		/* Glyph separator */
-		if(i != (ustrlen(source) - 1))
-		{
-			concat (dest, "11");
-		}
-	}
+/* UPC-E is a zero-compressed version of UPC-A */
+static int upce(struct zint_symbol *symbol, unsigned char source[], int length, char dest[],
+                unsigned char equivalent[12]) {
+    return upce_cc(symbol, source, length, dest, 0 /*cc_rows*/, equivalent);
 }
 
+/* EAN-2 and EAN-5 add-on codes */
+static void ean_add_on(const unsigned char source[], const int length, char dest[], const int addon_gap) {
+    const char *parity;
+    int i;
+    char *d = dest + strlen(dest);
+
+    /* If an add-on then append with space */
+    if (addon_gap != 0) {
+        *d++ = z_itoc(addon_gap);
+    }
+
+    /* Start character */
+    memcpy(d, "112", 3);
+    d += 3;
+
+    /* Calculate parity */
+    if (length == 2) { /* EAN-2 */
+        int code_value, parity_bit;
+
+        code_value = 10 * z_ctoi(source[0]) + z_ctoi(source[1]);
+        parity_bit = code_value % 4;
+        parity = EAN2Parity[parity_bit];
+    } else { /* EAN-5 */
+        int values[6], parity_sum, parity_bit;
+
+        for (i = 0; i < 6; i++) {
+            values[i] = z_ctoi(source[i]);
+        }
+
+        parity_sum = (3 * (values[0] + values[2] + values[4]));
+        parity_sum += (9 * (values[1] + values[3]));
+
+        parity_bit = parity_sum % 10;
+        parity = EAN5Parity[parity_bit];
+    }
+
+    for (i = 0; i < length; i++) {
+        switch (parity[i]) {
+            case 'A':
+                memcpy(d, EANsetA[source[i] - '0'], 4);
+                d += 4;
+                break;
+            case 'B':
+                memcpy(d, EANsetB[source[i] - '0'], 4);
+                d += 4;
+                break;
+        }
+
+        /* Glyph separator */
+        if (i != (length - 1)) {
+            memcpy(d, "11", 2);
+            d += 2;
+        }
+    }
+    *d = '\0';
+}
 
 /* ************************ EAN-13 ****************** */
 
-char ean_check(char source[])
-{ /* Calculate the correct check digit for a EAN-13 barcode */
-	int i;
-	unsigned int h, count, check_digit;
+/* Make an EAN-13, allowing for composite if `cc_rows` set */
+static int ean13_cc(struct zint_symbol *symbol, const unsigned char source[], int length, char *d,
+                    const int cc_rows) {
+    int i, half_way;
+    const char *parity;
+    const unsigned char *gtin = symbol->text;
+    int error_number = 0;
 
-	count = 0;
+    z_hrt_cpy_nochk(symbol, source, length);
 
-	h = strlen(source);
-	for (i = h - 1; i >= 0; i--) {
-		count += ctoi(source[i]);
+    /* Add the appropriate check digit */
 
-		if (i & 1) {
-			count += 2 * ctoi(source[i]);
-		}
-	}
-	check_digit = 10 - (count%10);
-	if (check_digit == 10) { check_digit = 0; }
-	return itoc(check_digit);
+    if (length == 12) {
+        z_hrt_cat_chr_nochk(symbol, zint_gs1_check_digit(gtin, 12));
+    } else {
+        if (source[length - 1] != zint_gs1_check_digit(gtin, 12)) {
+            return ZEXT z_errtxtf(ZINT_ERROR_INVALID_CHECK, symbol, 275,
+                                    "Invalid check digit '%1$c', expecting '%2$c'",
+                                    source[length - 1], zint_gs1_check_digit(gtin, 12));
+        }
+    }
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
+        printf("EAN-13: %s, gtin: %s, Check digit: %c\n", source, gtin, gtin[symbol->text_length - 1]);
+    }
+
+    /* Get parity for first half of the symbol */
+    parity = EAN13Parity[gtin[0] - '0'];
+
+    /* Now get on with the cipher */
+    half_way = 7;
+
+    /* Start character */
+    memcpy(d, "111", 3);
+    d += 3;
+
+    for (i = 1; i < symbol->text_length; i++, d += 4) {
+        if (i == half_way) {
+            /* Middle character - separates manufacturer no. from product no. - also inverts right hand characters */
+            memcpy(d, "11111", 5);
+            d += 5;
+        }
+
+        if (i > 1 && i < 7 && parity[i - 2] == 'B') {
+            memcpy(d, EANsetB[gtin[i] - '0'], 4);
+        } else {
+            memcpy(d, EANsetA[gtin[i] - '0'], 4);
+        }
+    }
+
+    /* Stop character */
+    memcpy(d, "111", 4); /* Include terminating NUL */
+
+    if (symbol->output_options & COMPLIANT_HEIGHT) {
+        /* ISO/IEC 15420:2009 4.3.3 Bar height EAN-13 22.85mm / 0.33mm (X) ~ 69.24,
+           same as minimum GS1 General Specifications 21.0.1 5.12.3.1 */
+        const float height = 69.242424f; /* 22.85 / 0.33 */
+        if (symbol->symbology == BARCODE_EANX_CC || symbol->symbology == BARCODE_EAN8_CC
+                || symbol->symbology == BARCODE_EAN13_CC) {
+            symbol->height = height; /* Pass back min row == default height */
+        } else {
+            error_number = z_set_height(symbol, height, height, 0.0f, 0 /*no_errtxt*/);
+        }
+    } else {
+        const float height = 50.0f;
+        if (symbol->symbology == BARCODE_EANX_CC || symbol->symbology == BARCODE_EAN8_CC
+                || symbol->symbology == BARCODE_EAN13_CC) {
+            symbol->height = height - cc_rows * 2 - 6.0f;
+        } else {
+            (void) z_set_height(symbol, 0.0f, height, 0.0f, 1 /*no_errtxt*/);
+        }
+    }
+
+    return error_number;
 }
 
-void ean13(struct zint_symbol *symbol, unsigned char source[], char dest[])
-{
-	unsigned int length, i, half_way;
-	char parity[6];
-	char gtin[15];
-
-	strcpy(parity, "");
-	strcpy(gtin, (char*)source);
-	
-	/* Add the appropriate check digit */
-	length = strlen(gtin);
-	gtin[length] = ean_check(gtin);
-	gtin[length + 1] = '\0';
-
-	/* Get parity for first half of the symbol */
-	lookup(SODIUM, EAN13Parity, gtin[0], parity);
-
-	/* Now get on with the cipher */
-	half_way = 7;
-
-	/* start character */
-	concat (dest, "111");
-	length = strlen(gtin);
-	for(i = 1; i <= length; i++)
-	{
-		if (i == half_way)
-		{
-			/* middle character - separates manufacturer no. from product no. */
-			/* also inverses right hand characters */
-			concat (dest, "11111");
-		}
-
-		if(((i > 1) && (i < 7)) && (parity[i - 2] == 'B'))
-		{
-			lookup(NEON, EANsetB, gtin[i], dest);
-		}
-		else
-		{
-			lookup(NEON, EANsetA, gtin[i], dest);
-		}
-	}
-
-	/* stop character */
-	concat (dest, "111");
-	
-	ustrcpy(symbol->text, (unsigned char*)gtin);
+/* Make an EAN-13 */
+static int ean13(struct zint_symbol *symbol, const unsigned char source[], int length, char dest[]) {
+    return ean13_cc(symbol, source, length, dest, 0 /*cc_rows*/);
 }
 
-void ean8(struct zint_symbol *symbol, unsigned char source[], char dest[])
-{ /* Make an EAN-8 barcode when we haven't been given the check digit */
-  /* EAN-8 is basically the same as UPC-A but with fewer digits */
-	int length;
-	char gtin[10];
+/* Make an EAN-8, allowing for composite if `cc_rows` set */
+static int ean8_cc(struct zint_symbol *symbol, const unsigned char source[], int length, char dest[],
+                    const int cc_rows) {
+    /* EAN-8 is basically the same as UPC-A but with fewer digits */
+    const unsigned char *gtin = symbol->text;
+    int error_number = 0;
 
-	strcpy(gtin, (char*)source);
-	length = strlen(gtin);
-	gtin[length] = upc_check(gtin);
-	gtin[length + 1] = '\0';
-	upca_draw(gtin, dest);
-	ustrcpy(symbol->text, (unsigned char*)gtin);
+    z_hrt_cpy_nochk(symbol, source, length);
+
+    if (length == 7) {
+        z_hrt_cat_chr_nochk(symbol, zint_gs1_check_digit(gtin, 7));
+    } else {
+        if (source[length - 1] != zint_gs1_check_digit(gtin, 7)) {
+            return ZEXT z_errtxtf(ZINT_ERROR_INVALID_CHECK, symbol, 276,
+                                    "Invalid EAN-8 check digit '%1$c', expecting '%2$c'",
+                                    source[length - 1], zint_gs1_check_digit(gtin, 7));
+        }
+    }
+    if (symbol->debug & ZINT_DEBUG_PRINT) {
+        printf("EAN-8: %s, gtin: %s, Check digit: %c\n", source, gtin,
+            length == 7 ? gtin[length] : gtin[length - 1]);
+    }
+
+    upca_set_dest(gtin, symbol->text_length, dest);
+
+    if (symbol->output_options & COMPLIANT_HEIGHT) {
+        /* ISO/IEC 15420:2009 4.3.3 Bar height EAN-8 18.23mm / 0.33mm (X) ~ 55.24,
+           same as minimum GS1 General Specifications 21.0.1 5.12.3.1 */
+        const float height = 55.242424f; /* 18.23 / 0.33 */
+        if (symbol->symbology == BARCODE_EANX_CC || symbol->symbology == BARCODE_EAN8_CC
+                || symbol->symbology == BARCODE_EAN13_CC) {
+            symbol->height = height; /* Pass back min row == default height */
+        } else {
+            error_number = z_set_height(symbol, height, height, 0.0f, 0 /*no_errtxt*/);
+        }
+    } else {
+        const float height = 50.0f;
+        if (symbol->symbology == BARCODE_EANX_CC || symbol->symbology == BARCODE_EAN8_CC
+                || symbol->symbology == BARCODE_EAN13_CC) {
+            symbol->height = height - cc_rows * 2 - 6.0f;
+        } else {
+            (void) z_set_height(symbol, 0.0f, height, 0.0f, 1 /*no_errtxt*/);
+        }
+    }
+
+    return error_number;
 }
 
-char isbn13_check(unsigned char source[]) /* For ISBN(13) only */
-{
-	unsigned int i, weight, sum, check, h;
-
-	sum = 0;
-	weight = 1;
-	h = ustrlen(source) - 1;
-
-	for(i = 0; i < h; i++)
-	{
-		sum += ctoi(source[i]) * weight;
-		if(weight == 1) weight = 3; else weight = 1;
-	}
-
-	check = sum % 10;
-	check = 10 - check;
-	if(check == 10) check = 0;
-	return itoc(check);
+/* Make an EAN-8 barcode */
+static int ean8(struct zint_symbol *symbol, const unsigned char source[], int length, char dest[]) {
+    return ean8_cc(symbol, source, length, dest, 0 /*cc_rows*/);
 }
 
-char isbn_check(unsigned char source[]) /* For ISBN(10) and SBN only */
-{
-	unsigned int i, weight, sum, check, h;
-	char check_char;
+/* For ISBN(10) and SBN only */
+static char isbnx_check(const unsigned char source[], const int length) {
+    int i, weight, sum, check;
+    char check_char;
 
-	sum = 0;
-	weight = 1;
-	h = ustrlen(source) - 1;
+    sum = 0;
+    weight = 1;
 
-	for(i = 0; i < h; i++)
-	{
-		sum += ctoi(source[i]) * weight;
-		weight++;
-	}
+    for (i = 0; i < length; i++) { /* Length will always be 9 */
+        sum += z_ctoi(source[i]) * weight;
+        weight++;
+    }
 
-	check = sum % 11;
-	check_char = itoc(check);
-	if(check == 10) { check_char = 'X'; }
-	return check_char;
+    check = sum % 11;
+    check_char = z_itoc(check);
+    if (check == 10) {
+        check_char = 'X';
+    }
+    return check_char;
 }
 
-int isbn(struct zint_symbol *symbol, unsigned char source[], const unsigned int src_len, char dest[]) /* Make an EAN-13 barcode from an SBN or ISBN */
-{
-	int i, error_number;
-	char check_digit;
-	
-	to_upper(source);
-	error_number = is_sane("0123456789X", source, src_len);
-	if(error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid characters in input");
-		return error_number;
-	}
+/* Make an EAN-13 barcode from an SBN or ISBN */
+static int isbnx(struct zint_symbol *symbol, unsigned char source[], const int length, char dest[]) {
+    int i;
+    char check_digit;
 
-	/* Input must be 9, 10 or 13 characters */
-	if(((src_len < 9) || (src_len > 13)) || ((src_len > 10) && (src_len < 13)))
-	{
-		strcpy(symbol->errtxt, "Input wrong length");
-		return ERROR_TOO_LONG;
-	}
+    z_to_upper(source, length);
+    if (z_not_sane(ISBNX_SANE_F, source, length)) { /* As source has been zero-padded, don't report position */
+        return z_errtxt(ZINT_ERROR_INVALID_DATA, symbol, 277, "Invalid character in input (digits and \"X\" only)");
+    }
 
-	if(src_len == 13) /* Using 13 character ISBN */
-	{
-		if(!(((source[0] == '9') && (source[1] == '7')) &&
-				     ((source[2] == '8') || (source[2] == '9'))))
-		{
-			strcpy(symbol->errtxt, "Invalid ISBN");
-			return ERROR_INVALID_DATA;
-		}
+    /* Input must be 9, 10 or 13 characters */
+    if (length != 9 && length != 10 && length != 13) {
+        return z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, 278, "Input length %d wrong (9, 10, or 13 characters required)",
+                        length);
+    }
 
-		check_digit = isbn13_check(source);
-		if (source[src_len - 1] != check_digit)
-		{
-			strcpy(symbol->errtxt, "Incorrect ISBN check");
-			return ERROR_INVALID_CHECK;
-		}
-		source[12] = '\0';
+    if (length == 13) /* Using 13 character ISBN */ {
+        if (source[0] != '9' || source[1] != '7' || (source[2] != '8' && source[2] != '9')) {
+            return z_errtxt(ZINT_ERROR_INVALID_DATA, symbol, 279,
+                            "Invalid ISBN (must begin with \"978\" or \"979\")");
+        }
 
-		ean13(symbol, source, dest);
-	}
+        /* "X" cannot occur */
+        if (z_not_sane(NEON_F, source, 13)) {
+            return z_errtxt(ZINT_ERROR_INVALID_DATA, symbol, 282,
+                            "Invalid character in input, \"X\" not allowed in ISBN-13");
+        }
 
-	if(src_len == 10) /* Using 10 digit ISBN */
-	{
-		check_digit = isbn_check(source);
-		if(check_digit != source[src_len - 1])
-		{
-			strcpy(symbol->errtxt, "Incorrect ISBN check");
-			return ERROR_INVALID_CHECK;
-		}
-		for(i = 13; i > 0; i--)
-		{
-			source[i] = source[i - 3];
-		}
-		source[0] = '9';
-		source[1] = '7';
-		source[2] = '8';
-		source[12] = '\0';
+        check_digit = zint_gs1_check_digit(source, 12);
+        if (source[12] != check_digit) {
+            return ZEXT z_errtxtf(ZINT_ERROR_INVALID_CHECK, symbol, 280,
+                                "Invalid ISBN check digit '%1$c', expecting '%2$c'", source[12], check_digit);
+        }
+        source[12] = '\0';
 
-		ean13(symbol, source, dest);
-	}
+    } else { /* Using 10 digit ISBN or 9 digit SBN padded with leading zero */
+        if (length == 9) /* Using 9 digit SBN */ {
+            /* Add leading zero */
+            for (i = 10; i > 0; i--) {
+                source[i] = source[i - 1];
+            }
+            source[0] = '0';
+        }
 
-	if(src_len == 9) /* Using 9 digit SBN */
-	{
-		/* Add leading zero */
-		for(i = 10; i > 0; i--)
-		{
-			source[i] = source[i - 1];
-		}
-		source[0] = '0';
+        /* "X" can only occur in last position */
+        if (z_not_sane(NEON_F, source, 9)) {
+            return z_errtxt(ZINT_ERROR_INVALID_DATA, symbol, 296,
+                            "Invalid character in input, \"X\" allowed in last position only");
+        }
 
-		/* Verify check digit */
-		check_digit = isbn_check(source);
-		if(check_digit != source[ustrlen(source) - 1])
-		{
-			strcpy(symbol->errtxt, "Incorrect SBN check");
-			return ERROR_INVALID_CHECK;
-		}
+        check_digit = isbnx_check(source, 9);
+        if (check_digit != source[9]) {
+            return ZEXT z_errtxtf(ZINT_ERROR_INVALID_CHECK, symbol, 281,
+                                    "Invalid %1$s check digit '%2$c', expecting '%3$c'", length == 9 ? "SBN" : "ISBN",
+                                    source[9], check_digit);
+        }
+        for (i = 11; i > 2; i--) { /* This drops the check digit */
+            source[i] = source[i - 3];
+        }
+        source[0] = '9';
+        source[1] = '7';
+        source[2] = '8';
+        source[12] = '\0';
+    }
 
-		/* Convert to EAN-13 number */
-		for(i = 13; i > 0; i--)
-		{
-			source[i] = source[i - 3];
-		}
-		source[0] = '9';
-		source[1] = '7';
-		source[2] = '8';
-		source[12] = '\0';
-
-		ean13(symbol, source, dest);
-	}
-	
-	return 0;
+    return ean13(symbol, source, 12, dest);
 }
 
-void ean_leading_zeroes(struct zint_symbol *symbol, unsigned char source[], unsigned char local_source[]) {
-	/* Add leading zeroes to EAN and UPC strings */
-	unsigned char first_part[20], second_part[20], zfirst_part[20], zsecond_part[20];
-	int with_addon = 0;
-	int first_len = 0, second_len = 0, zfirst_len = 0, zsecond_len = 0, i, h;
-	
-	h = ustrlen(source);
-	for(i = 0; i < h; i++) {
-		if(source[i] == '+') {
-			with_addon = 1;
-		} else {
-			if(with_addon == 0) {
-				first_len++;
-			} else {
-				second_len++;
-			}
-		}
-	}
-	
-	ustrcpy(first_part, (unsigned char *)"");
-	ustrcpy(second_part, (unsigned char *)"");
-	ustrcpy(zfirst_part, (unsigned char *)"");
-	ustrcpy(zsecond_part, (unsigned char *)"");
-	
-	/* Split input into two strings */
-	for(i = 0; i < first_len; i++) {
-		first_part[i] = source[i];
-		first_part[i + 1] = '\0';
-	}
-	
-	for(i = 0; i < second_len; i++) {
-		second_part[i] = source[i + first_len + 1];
-		second_part[i + 1] = '\0';
-	}
-	
-	/* Calculate target lengths */
-	if(second_len <= 5) { zsecond_len = 5; }
-	if(second_len <= 2) { zsecond_len = 2; }
-	if(second_len == 0) { zsecond_len = 0; }
-	switch(symbol->symbology) {
-		case BARCODE_EANX:
-		case BARCODE_EANX_CC:
-			if(first_len <= 12) { zfirst_len = 12; }
-			if(first_len <= 7) { zfirst_len = 7; }
-			if(second_len == 0) {
-				if(first_len <= 5) { zfirst_len = 5; }
-				if(first_len <= 2) { zfirst_len = 2; }
-			}
-			break;
-		case BARCODE_UPCA:
-		case BARCODE_UPCA_CC:
-			zfirst_len = 11;
-			break;
-		case BARCODE_UPCE:
-		case BARCODE_UPCE_CC:
-			if(first_len == 7) { zfirst_len = 7; }
-			if(first_len <= 6) { zfirst_len = 6; }
-			break;
-		case BARCODE_ISBNX:
-			if(first_len <= 9) { zfirst_len = 9; }
-			break;
-	}
+/* Check if GTIN-13 `source` is UPC-E compatible and convert as UPC-E into `out` if so */
+static int ean_is_upce(const unsigned char source[], unsigned char *out) {
+    static const char zeroes[5] = { '0', '0', '0', '0', '0' };
 
-	
-	/* Add leading zeroes */
-	for(i = 0; i < (zfirst_len - first_len); i++) {
-		uconcat(zfirst_part, (unsigned char *)"0");
-	}
-	uconcat(zfirst_part, first_part);
-	for(i = 0; i < (zsecond_len - second_len); i++) {
-		uconcat(zsecond_part, (unsigned char *)"0");
-	}
-	uconcat(zsecond_part, second_part);
-	
-	/* Copy adjusted data back to local_source */
-	uconcat(local_source, zfirst_part);
-	if(zsecond_len != 0) {
-		uconcat(local_source, (unsigned char *)"+");
-		uconcat(local_source, zsecond_part);
-	}
+    if (source[0] != '0' || source[1] > '1') {
+        return 0;
+    }
+    out[0] = source[1];
+    out[7] = source[12];
+    out[8] = '\0';
+    if (source[11] >= '5' && source[6] != '0' && memcmp(source + 7, zeroes, 4) == 0) {
+        memcpy(out + 1, source + 2, 5);
+        out[6] = source[11];
+        return 1;
+    }
+    if (source[5] != '0' && memcmp(source + 6, zeroes, 5) == 0) {
+        memcpy(out + 1, source + 2, 4);
+        out[5] = source[11];
+        out[6] = '4';
+        return 1;
+    }
+    if (source[4] <= '2' && memcmp(source + 5, zeroes, 4) == 0) {
+        out[1] = source[2];
+        out[2] = source[3];
+        memcpy(out + 3, source + 9, 3);
+        out[6] = source[4];
+        return 1;
+    }
+    if (source[4] >= '3' && memcmp(source + 5, zeroes, 5) == 0) {
+        memcpy(out + 1, source + 2, 3);
+        out[4] = source[10];
+        out[5] = source[11];
+        out[6] = '3';
+        return 1;
+    }
+    return 0;
 }
 
-int eanx(struct zint_symbol *symbol, unsigned char source[], int src_len)
-{
-	/* splits string to parts before and after '+' parts */
-	unsigned char first_part[20] = { 0 }, second_part[20] = { 0 }, dest[1000] = { 0 };
-	unsigned char local_source[20] = { 0 };
-	unsigned int latch, reader, writer, with_addon;
-	int error_number, i;
-	
+/* Add leading zeroes to EAN and UPC strings and split into parts (second part add-on if any) */
+INTERNAL int zint_ean_leading_zeroes(struct zint_symbol *symbol, const unsigned char source[], const int length,
+                unsigned char local_source[], int *p_with_addon, unsigned char *zfirst_part,
+                unsigned char *zsecond_part) {
+    unsigned char first_part[14], second_part[6];
+    int with_addon = 0;
+    int first_len = 0, second_len = 0, zfirst_len = 0, zsecond_len = 0, i;
+    const int symbology = symbol->symbology;
+    const int max = symbology == BARCODE_EAN8 || symbology == BARCODE_EAN8_CC ? 8 :
+                    symbology == BARCODE_EAN_2ADDON ? 2 : symbology == BARCODE_EAN_5ADDON ? 5 : 13;
 
-	with_addon = FALSE;
-	latch = FALSE;
-	writer = 0;
+    /* Accept GINT-13 with correct check digit, with or without 2/5-digit (no separator) */
+    if ((length == 13 || length == 15 || length == 18) && !z_not_sane(NEON_F, source, length)
+            && zint_gs1_check_digit(ZCUCP(source), 12) == source[12]) {
+        int local_length = 0;
+        if (symbology == BARCODE_EAN13 || symbology == BARCODE_EAN13_CC
+                || symbology == BARCODE_EANX || symbology == BARCODE_EANX_CHK || symbology == BARCODE_EANX_CC) {
+            memcpy(local_source, source, 13);
+            local_length = 13;
+        } else if ((symbology == BARCODE_EAN8 || symbology == BARCODE_EAN8_CC) && memcmp(source, "00000", 5) == 0) {
+            memcpy(local_source, source + 5, 8);
+            local_length = 8;
+        } else if ((symbology == BARCODE_UPCA || symbology == BARCODE_UPCA_CHK || symbology == BARCODE_UPCA_CC)
+                    && source[0] == '0') {
+            memcpy(local_source, source + 1, 12);
+            local_length = 12;
+        } else if ((symbology == BARCODE_UPCE || symbology == BARCODE_UPCE_CHK || symbology == BARCODE_UPCE_CC)
+                    && ean_is_upce(source, local_source)) {
+            local_length = 8;
+        }
+        if (local_length) {
+            if (length > 13) {
+                local_source[local_length] = '+';
+                memcpy(local_source + local_length + 1, source + 13, length - 13);
+                local_source[local_length + 1 + (length - 13)] = '\0';
+            } else {
+                local_source[local_length] = '\0';
+            }
+            if (zfirst_part) {
+                memcpy(zfirst_part, local_source, local_length);
+                zfirst_part[local_length] = '\0';
+            }
+            if (zsecond_part) {
+                if (length > 13) {
+                    memcpy(zsecond_part, source + 13, length - 13);
+                }
+                zsecond_part[length - 13] = '\0';
+            }
+            if (p_with_addon) {
+                *p_with_addon = length > 13;
+            }
+            return 1; /* Success */
+        }
+    }
 
-	if(src_len > 19) {
-		strcpy(symbol->errtxt, "Input too long");
-		return ERROR_TOO_LONG;
-	}
-	if(symbol->symbology != BARCODE_ISBNX) {
-		/* ISBN has it's own checking routine */
-		error_number = is_sane("0123456789+", source, src_len);
-		if(error_number == ERROR_INVALID_DATA) {
-			strcpy(symbol->errtxt, "Invalid characters in data");
-			return error_number;
-		}
-	} else {
-		error_number = is_sane("0123456789Xx", source, src_len);
-		if(error_number == ERROR_INVALID_DATA) {
-			strcpy(symbol->errtxt, "Invalid characters in input");
-			return error_number;
-		}
-	}
+    /* Standard input, with +/space separated add-on if any */
+    for (i = 0; i < length; i++) {
+        if (source[i] == '+' || source[i] == ' ') {
+            with_addon = 1;
+        } else {
+            if (with_addon == 0) {
+                first_len++;
+            } else {
+                second_len++;
+            }
+        }
+    }
+    if (first_len > max || second_len > 5) {
+        if (first_len > max) {
+            if (!second_len || symbology == BARCODE_EAN_2ADDON || symbology == BARCODE_EAN_5ADDON) {
+                ZEXT z_errtxtf(0, symbol, 294, "Input length %1$d too long (maximum %2$d)", first_len, max);
+            } else {
+                ZEXT z_errtxtf(0, symbol, 298, "Input EAN length %1$d too long (maximum %2$d)", first_len, max);
+            }
+        } else {
+            z_errtxtf(0, symbol, 297, "Input add-on length %d too long (maximum 5)", second_len);
+        }
+        if (p_with_addon) {
+            *p_with_addon = with_addon;
+        }
+        return 0;
+    }
 
+    /* Split input into two strings */
+    for (i = 0; i < first_len; i++) {
+        first_part[i] = source[i];
+    }
+    first_part[first_len] = '\0';
 
-	/* Add leading zeroes */
-	ustrcpy(local_source, (unsigned char *)"");
-	if(symbol->symbology == BARCODE_ISBNX) {
-		to_upper(local_source);
-	}
-	
-	ean_leading_zeroes(symbol, source, local_source);
-	
-	for(reader = 0; reader <= ustrlen(local_source); reader++)
-	{
-		if(source[reader] == '+') { with_addon = TRUE; }
-	}
+    for (i = 0; i < second_len; i++) {
+        second_part[i] = source[i + first_len + 1];
+    }
+    second_part[second_len] = '\0';
 
-	reader = 0;
-	if(with_addon) {
-		do {
-			if(local_source[reader] == '+') {
-				first_part[writer] = '\0';
-				latch = TRUE;
-				reader++;
-				writer = 0;
-			}
+    /* Calculate target lengths */
+    if (second_len == 0) {
+        zsecond_len = 0;
+    } else if (second_len <= 2) {
+        zsecond_len = 2;
+    } else {
+        zsecond_len = 5;
+    }
+    switch (symbology) {
+        case BARCODE_EAN8:
+        case BARCODE_EAN8_CC:
+            zfirst_len = first_len <= 7 ? 7 : 8;
+            break;
+        case BARCODE_EAN_2ADDON:
+            zfirst_len = 2;
+            break;
+        case BARCODE_EAN_5ADDON:
+            zfirst_len = 5;
+            break;
+        case BARCODE_EAN13:
+        case BARCODE_EAN13_CC:
+            zfirst_len = first_len <= 12 ? 12 : 13;
+            break;
+        case BARCODE_EANX:
+        case BARCODE_EANX_CC:
+            if (first_len <= 12) {
+                if (first_len <= 7) {
+                    zfirst_len = 7;
+                } else {
+                    zfirst_len = 12;
+                }
+            }
+            if (second_len == 0 && symbology == BARCODE_EANX) { /* No composite EAN-2/5 */
+                if (first_len <= 5) {
+                    if (first_len <= 2) {
+                        zfirst_len = 2;
+                    } else {
+                        zfirst_len = 5;
+                    }
+                }
+            }
+            break;
+        case BARCODE_EANX_CHK:
+            if (first_len <= 13) {
+                if (first_len <= 8) {
+                    zfirst_len = 8;
+                } else {
+                    zfirst_len = 13;
+                }
+            }
+            if (second_len == 0) {
+                if (first_len <= 5) {
+                    if (first_len <= 2) {
+                        zfirst_len = 2;
+                    } else {
+                        zfirst_len = 5;
+                    }
+                }
+            }
+            break;
+        case BARCODE_UPCA:
+        case BARCODE_UPCA_CC:
+            zfirst_len = 11;
+            break;
+        case BARCODE_UPCA_CHK:
+            zfirst_len = 12;
+            break;
+        case BARCODE_UPCE:
+        case BARCODE_UPCE_CC:
+            if (first_len == 7) {
+                zfirst_len = 7;
+            } else if (first_len <= 6) {
+                zfirst_len = 6;
+            }
+            break;
+        case BARCODE_UPCE_CHK:
+            if (first_len == 8) {
+                zfirst_len = 8;
+            } else if (first_len <= 7) {
+                zfirst_len = 7;
+            }
+            break;
+        case BARCODE_ISBNX:
+            if (first_len <= 9) {
+                zfirst_len = 9;
+            }
+            break;
+    }
 
-			if(latch) {
-				second_part[writer] = local_source[reader];
-				reader++;
-				writer++;
-			} else {
-				first_part[writer] = local_source[reader];
-				reader++;
-				writer++;
-			}
-		} while (reader <= ustrlen(local_source));
-	} else {
-		strcpy((char*)first_part, (char*)local_source);
-	}
+    /* Copy adjusted data back to local_source */
 
+    /* Add leading zeroes */
+    for (i = 0; i < (zfirst_len - first_len); i++) {
+        local_source[i] = '0';
+    }
+    memcpy(local_source + i, first_part, first_len + 1); /* Include terminating NUL */
+    if (zfirst_part) {
+        memcpy(zfirst_part, local_source, z_ustrlen(local_source) + 1);
+    }
 
-	switch(symbol->symbology)
-	{
-		case BARCODE_EANX:
-			switch(ustrlen(first_part))
-			{
-				case 2: add_on(first_part, (char*)dest, 0); ustrcpy(symbol->text, first_part); break;
-				case 5: add_on(first_part, (char*)dest, 0); ustrcpy(symbol->text, first_part); break;
-				case 7: ean8(symbol, first_part, (char*)dest); break;
-				case 12: ean13(symbol, first_part, (char*)dest); break;
-				default: strcpy(symbol->errtxt, "Invalid length input"); return ERROR_TOO_LONG; break;
-			}
-			break;
-		case BARCODE_EANX_CC:
-			switch(ustrlen(first_part))
-			{ /* Adds vertical separator bars according to ISO/IEC 24723 section 11.4 */
-				case 7: set_module(symbol, symbol->rows, 1);
-					set_module(symbol, symbol->rows, 67);
-					set_module(symbol, symbol->rows + 1, 0);
-					set_module(symbol, symbol->rows + 1, 68);
-					set_module(symbol, symbol->rows + 2, 1);
-					set_module(symbol, symbol->rows + 1, 67);
-					symbol->row_height[symbol->rows] = 2;
-					symbol->row_height[symbol->rows + 1] = 2;
-					symbol->row_height[symbol->rows + 2] = 2;
-					symbol->rows += 3;
-					ean8(symbol, first_part, (char*)dest); break;
-				case 12:set_module(symbol, symbol->rows, 1);
-					set_module(symbol, symbol->rows, 95);
-					set_module(symbol, symbol->rows + 1, 0);
-					set_module(symbol, symbol->rows + 1, 96);
-					set_module(symbol, symbol->rows + 2, 1);
-					set_module(symbol, symbol->rows + 2, 95);
-					symbol->row_height[symbol->rows] = 2;
-					symbol->row_height[symbol->rows + 1] = 2;
-					symbol->row_height[symbol->rows + 2] = 2;
-					symbol->rows += 3;
-					ean13(symbol, first_part, (char*)dest); break;
-					default: strcpy(symbol->errtxt, "Invalid length EAN input"); return ERROR_TOO_LONG; break;
-			}
-			break;
-		case BARCODE_UPCA:
-			if(ustrlen(first_part) == 11) {
-				upca(symbol, first_part, (char*)dest);
-			} else {
-				strcpy(symbol->errtxt, "Input wrong length");
-				return ERROR_TOO_LONG;
-			}
-			break;
-		case BARCODE_UPCA_CC:
-			if(ustrlen(first_part) == 11) {
-				set_module(symbol, symbol->rows, 1);
-				set_module(symbol, symbol->rows, 95);
-				set_module(symbol, symbol->rows + 1, 0);
-				set_module(symbol, symbol->rows + 1, 96);
-				set_module(symbol, symbol->rows + 2, 1);
-				set_module(symbol, symbol->rows + 2, 95);
-				symbol->row_height[symbol->rows] = 2;
-				symbol->row_height[symbol->rows + 1] = 2;
-				symbol->row_height[symbol->rows + 2] = 2;
-				symbol->rows += 3;
-				upca(symbol, first_part, (char*)dest);
-			} else {
-				strcpy(symbol->errtxt, "UPCA input wrong length");
-				return ERROR_TOO_LONG;
-			}
-			break;
-		case BARCODE_UPCE:
-			if((ustrlen(first_part) >= 6) && (ustrlen(first_part) <= 7)) {
-				upce(symbol, first_part, (char*)dest);
-			} else {
-				strcpy(symbol->errtxt, "Input wrong length");
-				return ERROR_TOO_LONG;
-			}
-			break;
-		case BARCODE_UPCE_CC:
-			if((ustrlen(first_part) >= 6) && (ustrlen(first_part) <= 7)) {
-				set_module(symbol, symbol->rows, 1);
-				set_module(symbol, symbol->rows, 51);
-				set_module(symbol, symbol->rows + 1, 0);
-				set_module(symbol, symbol->rows + 1, 52);
-				set_module(symbol, symbol->rows + 2, 1);
-				set_module(symbol, symbol->rows + 2, 51);
-				symbol->row_height[symbol->rows] = 2;
-				symbol->row_height[symbol->rows + 1] = 2;
-				symbol->row_height[symbol->rows + 2] = 2;
-				symbol->rows += 3;
-				upce(symbol, first_part, (char*)dest);
-			} else {
-				strcpy(symbol->errtxt, "UPCE input wrong length");
-				return ERROR_TOO_LONG;
-			}
-			break;
-		case BARCODE_ISBNX:
-			error_number = isbn(symbol, first_part, ustrlen(first_part), (char*)dest);
-			if(error_number > 4) {
-				return error_number;
-			}
-			break;
-	}
-	switch(ustrlen(second_part))
-	{
-		case 0: break;
-		case 2:
-			add_on(second_part, (char*)dest, 1);
-			uconcat(symbol->text, (unsigned char*)"+");
-			uconcat(symbol->text, second_part);
-			break;
-		case 5:
-			add_on(second_part, (char*)dest, 1);
-			uconcat(symbol->text, (unsigned char*)"+");
-			uconcat(symbol->text, second_part);
-			break;
-		default:
-			strcpy(symbol->errtxt, "Invalid length input");
-			return ERROR_TOO_LONG;
-			break;
-	}
-	
-	expand(symbol, (char*)dest);
+    if (with_addon) {
+        int h = (int) z_ustrlen(local_source);
+        local_source[h++] = '+';
+        for (i = 0; i < (zsecond_len - second_len); i++) {
+            local_source[h + i] = '0';
+        }
+        memcpy(local_source + h + i, second_part, second_len + 1); /* Include terminating NUL */
+        if (zsecond_part) {
+            memcpy(zsecond_part, local_source + h, z_ustrlen(local_source + h) + 1);
+        }
+    } else if (zsecond_part) {
+        *zsecond_part = '\0';
+    }
 
-	switch(symbol->symbology) {
-		case BARCODE_EANX_CC:
-		case BARCODE_UPCA_CC:
-		case BARCODE_UPCE_CC:
-			/* shift the symbol to the right one space to allow for separator bars */
-			for(i = (symbol->width + 1); i >= 1; i--) {
-				if(module_is_set(symbol, symbol->rows - 1, i - 1)) {
-					set_module(symbol, symbol->rows - 1, i);
-				} else {
-					unset_module(symbol, symbol->rows - 1, i);
-				}
-			}
-			unset_module(symbol, symbol->rows - 1, 0);
-			symbol->width += 2;
-			break;
-	}
+    if (p_with_addon) {
+        *p_with_addon = with_addon;
+    }
 
-	
-	if((symbol->errtxt[0] == 'w') && (error_number == 0)) {
-		error_number = 1; /* flag UPC-E warnings */
-	}
-	return error_number;
+    return 1; /* Success */
 }
 
+/* Make EAN/UPC and ISBN, allowing for composite if `cc_rows` set */
+INTERNAL int zint_eanx_cc(struct zint_symbol *symbol, unsigned char source[], int length, const int cc_rows) {
+    unsigned char first_part[14], second_part[6];
+    unsigned char local_source[20]; /* Allow 13 + "+" + 5 + 1 */
+    unsigned char equivalent[12] = {0}; /* For UPC-E - GTIN-12 equivalent */
+    char dest[1000] = {0};
+    int with_addon;
+    int error_number = 0, i, sep_count;
+    int addon_gap = 0;
+    int first_part_len, second_part_len;
+    const int content_segs = symbol->output_options & BARCODE_CONTENT_SEGS;
 
+    if (length > 19) {
+        return z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, 283, "Input length %d too long (maximum 19)", length);
+    }
+    if (symbol->symbology == BARCODE_ISBNX) {
+        /* ISBN has its own sanity routine */
+        if ((i = z_not_sane(ISBNX_ADDON_SANE_F, source, length))) {
+            return z_errtxtf(ZINT_ERROR_INVALID_DATA, symbol, 285,
+                            "Invalid character at position %d in input (digits, \"X\" and \"+\" or space only)", i);
+        }
+        /* Add-on will be checked separately to be numeric only below */
+    } else if (symbol->symbology == BARCODE_EAN_2ADDON || symbol->symbology == BARCODE_EAN_5ADDON) {
+        if ((i = z_not_sane(NEON_F, source, length))) {
+            return z_errtxtf(ZINT_ERROR_INVALID_DATA, symbol, 852,
+                            "Invalid character at position %d in input (digits only)", i);
+        }
+    } else {
+        if ((i = z_not_sane(SODIUM_PLS_SPC_F, source, length))) {
+            return z_errtxtf(ZINT_ERROR_INVALID_DATA, symbol, 284,
+                            "Invalid character at position %d in input (digits and \"+\" or space only)", i);
+        }
+    }
 
+    /* Check for multiple separator characters */
+    sep_count = 0;
+    for (i = 0; i < length; i++) {
+        if (source[i] == '+' || source[i] == ' ') {
+            if (++sep_count > 1) {
+                return z_errtxt(ZINT_ERROR_INVALID_DATA, symbol, 293,
+                                "Invalid add-on data (one \"+\" or space only)");
+            }
+        }
+    }
 
+    /* Add leading zeroes, checking max lengths of parts */
+    if (!zint_ean_leading_zeroes(symbol, source, length, local_source, &with_addon, first_part, second_part)) {
+        return ZINT_ERROR_TOO_LONG; /* `zint_ean_leading_zeroes()` sets `errtxt` */
+    }
+
+    if (with_addon) {
+        if (symbol->symbology == BARCODE_UPCA || symbol->symbology == BARCODE_UPCA_CHK
+                || symbol->symbology == BARCODE_UPCA_CC) {
+            addon_gap = symbol->option_2 >= 9 && symbol->option_2 <= 12 ? symbol->option_2 : 9;
+        } else {
+            addon_gap = symbol->option_2 >= 7 && symbol->option_2 <= 12 ? symbol->option_2 : 7;
+        }
+    }
+
+    first_part_len = (int) z_ustrlen(first_part);
+
+    switch (symbol->symbology) {
+        case BARCODE_EAN8:
+        case BARCODE_EAN_2ADDON:
+        case BARCODE_EAN_5ADDON:
+        case BARCODE_EANX:
+        case BARCODE_EANX_CHK:
+        case BARCODE_EAN13:
+            switch (first_part_len) {
+                case 2:
+                case 5:
+                    ean_add_on(first_part, first_part_len, dest, 0);
+                    z_hrt_cpy_nochk(symbol, first_part, first_part_len);
+                    if (symbol->output_options & COMPLIANT_HEIGHT) {
+                        /* 21.9mm from GS1 General Specifications 5.2.6.6, Figure 5.2.6.6-6 */
+                        const float height = 66.3636398f; /* 21.9 / 0.33 */
+                        error_number = z_set_height(symbol, height, height, 0.0f, 0 /*no_errtxt*/);
+                    } else {
+                        (void) z_set_height(symbol, 0.0f, 50.0f, 0.0f, 1 /*no_errtxt*/);
+                    }
+                    break;
+                case 7:
+                case 8:
+                    error_number = ean8(symbol, first_part, first_part_len, dest);
+                    break;
+                case 12:
+                case 13:
+                    error_number = ean13(symbol, first_part, first_part_len, dest);
+                    break;
+                default:
+                    assert(symbol->symbology == BARCODE_EANX || symbol->symbology == BARCODE_EANX_CHK);
+                    return z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, 286,
+                                    "Input length %d wrong (2, 5, 7, 8, 12 or 13 characters required)",
+                                    first_part_len);
+                    break;
+            }
+            break;
+        case BARCODE_EANX_CC:
+        case BARCODE_EAN8_CC:
+        case BARCODE_EAN13_CC:
+            switch (first_part_len) { /* Adds vertical separator bars according to ISO/IEC 24723 section 11.4 */
+                case 7:
+                case 8:
+                    z_set_module(symbol, symbol->rows, 1);
+                    z_set_module(symbol, symbol->rows, 67);
+                    z_set_module(symbol, symbol->rows + 1, 0);
+                    z_set_module(symbol, symbol->rows + 1, 68);
+                    z_set_module(symbol, symbol->rows + 2, 1);
+                    z_set_module(symbol, symbol->rows + 2, 67);
+                    symbol->row_height[symbol->rows] = 2;
+                    symbol->row_height[symbol->rows + 1] = 2;
+                    symbol->row_height[symbol->rows + 2] = 2;
+                    symbol->rows += 3;
+                    error_number = ean8_cc(symbol, first_part, first_part_len, dest, cc_rows);
+                    break;
+                case 12:
+                case 13:
+                    z_set_module(symbol, symbol->rows, 1);
+                    z_set_module(symbol, symbol->rows, 95);
+                    z_set_module(symbol, symbol->rows + 1, 0);
+                    z_set_module(symbol, symbol->rows + 1, 96);
+                    z_set_module(symbol, symbol->rows + 2, 1);
+                    z_set_module(symbol, symbol->rows + 2, 95);
+                    symbol->row_height[symbol->rows] = 2;
+                    symbol->row_height[symbol->rows + 1] = 2;
+                    symbol->row_height[symbol->rows + 2] = 2;
+                    symbol->rows += 3;
+                    error_number = ean13_cc(symbol, first_part, first_part_len, dest, cc_rows);
+                    break;
+                default:
+                    assert(symbol->symbology == BARCODE_EANX_CC);
+                    return z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, 287,
+                                    "Input length %d wrong (7, 12 or 13 characters required)", first_part_len);
+                    break;
+            }
+            break;
+        case BARCODE_UPCA:
+        case BARCODE_UPCA_CHK:
+            if (first_part_len <= 12) {
+                error_number = upca(symbol, first_part, first_part_len, dest);
+            } else {
+                return z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, 288,
+                                "Input length %d too long (maximum 12)", first_part_len);
+            }
+            break;
+        case BARCODE_UPCA_CC:
+            if (first_part_len <= 12) {
+                z_set_module(symbol, symbol->rows, 1);
+                z_set_module(symbol, symbol->rows, 95);
+                z_set_module(symbol, symbol->rows + 1, 0);
+                z_set_module(symbol, symbol->rows + 1, 96);
+                z_set_module(symbol, symbol->rows + 2, 1);
+                z_set_module(symbol, symbol->rows + 2, 95);
+                symbol->row_height[symbol->rows] = 2;
+                symbol->row_height[symbol->rows + 1] = 2;
+                symbol->row_height[symbol->rows + 2] = 2;
+                symbol->rows += 3;
+                error_number = upca_cc(symbol, first_part, first_part_len, dest, cc_rows);
+            } else {
+                return z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, 289,
+                                "Input length %d too long (maximum 12)", first_part_len);
+            }
+            break;
+        case BARCODE_UPCE:
+        case BARCODE_UPCE_CHK:
+            if (first_part_len <= 8) {
+                error_number = upce(symbol, first_part, first_part_len, dest, equivalent);
+            } else {
+                return z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, 290,
+                                "Input length %d too long (maximum 8)", first_part_len);
+            }
+            break;
+        case BARCODE_UPCE_CC:
+            if (first_part_len <= 8) {
+                z_set_module(symbol, symbol->rows, 1);
+                z_set_module(symbol, symbol->rows, 51);
+                z_set_module(symbol, symbol->rows + 1, 0);
+                z_set_module(symbol, symbol->rows + 1, 52);
+                z_set_module(symbol, symbol->rows + 2, 1);
+                z_set_module(symbol, symbol->rows + 2, 51);
+                symbol->row_height[symbol->rows] = 2;
+                symbol->row_height[symbol->rows + 1] = 2;
+                symbol->row_height[symbol->rows + 2] = 2;
+                symbol->rows += 3;
+                error_number = upce_cc(symbol, first_part, first_part_len, dest, cc_rows, equivalent);
+            } else {
+                return z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, 291,
+                                "Input length %d too long (maximum 8)", first_part_len);
+            }
+            break;
+        case BARCODE_ISBNX:
+            error_number = isbnx(symbol, first_part, first_part_len, dest);
+            break;
+    }
+
+    if (error_number >= ZINT_ERROR) {
+        return error_number;
+    }
+
+    second_part_len = (int) z_ustrlen(second_part);
+
+    if (symbol->symbology == BARCODE_ISBNX) { /* Need to further check that add-on numeric only */
+        if (z_not_sane(NEON_F, second_part, second_part_len)) {
+            return z_errtxt(ZINT_ERROR_INVALID_DATA, symbol, 295, "Invalid add-on data (digits only)");
+        }
+    }
+
+    if (second_part_len) {
+        ean_add_on(second_part, second_part_len, dest, addon_gap);
+        z_hrt_cat_chr_nochk(symbol, '+');
+        z_hrt_cat_nochk(symbol, second_part, second_part_len);
+        if (first_part_len <= 8 && (symbol->symbology == BARCODE_EAN8 || symbol->symbology == BARCODE_EANX
+                                    || symbol->symbology == BARCODE_EANX_CHK || symbol->symbology == BARCODE_EANX_CC
+                                    || symbol->symbology == BARCODE_EAN8_CC)) {
+            error_number = z_errtxt(ZINT_WARN_NONCOMPLIANT, symbol, 292, "EAN-8 with add-on is non-standard");
+        }
+    }
+
+    if (content_segs) {
+        const int is_ean = z_is_ean(symbol->symbology);
+        /* EAN-8 with no add-on, EAN-2, EAN-5 */
+        if (is_ean && symbol->text_length <= 8 && !second_part_len) {
+            if (z_ct_cpy(symbol, symbol->text, symbol->text_length)) { /* Just use the HRT */
+                return ZINT_ERROR_MEMORY; /* `z_ct_cpy()` only fails with OOM */
+            }
+        } else { /* Expand to GTIN-13 (UPC-A, UPC-E, EAN-8 with add-on) */
+            unsigned char gtin13[13];
+            /* EAN-13, ISBNX */
+            if (is_ean && symbol->text_length >= 13) {
+                memcpy(gtin13, symbol->text, 13);
+            /* UPC-E */
+            } else if (*equivalent) {
+                gtin13[0] = '0';
+                memcpy(gtin13 + 1, equivalent, 12);
+            /* UPC-A, EAN-8 */
+            } else {
+                const int zeroes = 13 - (symbol->text_length - (second_part_len ? second_part_len + 1 : 0));
+                assert(zeroes > 0);
+                memset(gtin13, '0', zeroes);
+                memcpy(gtin13 + zeroes, symbol->text, 13 - zeroes);
+            }
+            if (z_ct_cpy_cat(symbol, gtin13, 13, '\xFF' /*none*/, second_part, second_part_len)) {
+                return ZINT_ERROR_MEMORY; /* `z_ct_cpy_cat()` only fails with OOM */
+            }
+        }
+    }
+
+    z_expand(symbol, dest, (int) strlen(dest));
+
+    switch (symbol->symbology) {
+        case BARCODE_EANX_CC:
+        case BARCODE_EAN8_CC:
+        case BARCODE_EAN13_CC:
+        case BARCODE_UPCA_CC:
+        case BARCODE_UPCE_CC:
+            /* Shift the symbol to the right one space to allow for separator bars */
+            for (i = (symbol->width + 1); i >= 1; i--) {
+                if (z_module_is_set(symbol, symbol->rows - 1, i - 1)) {
+                    z_set_module(symbol, symbol->rows - 1, i);
+                } else {
+                    z_unset_module(symbol, symbol->rows - 1, i);
+                }
+            }
+            z_unset_module(symbol, symbol->rows - 1, 0);
+            symbol->width += 1 + (second_part_len == 0); /* Only need right space if no add-on */
+            break;
+    }
+
+    return error_number;
+}
+
+/* Handle UPC (UPC-A/E), EAN (EAN-13, EAN-8, EAN 2-digit add-on, EAN 5-digit add-on), ISBN */
+INTERNAL int zint_eanx(struct zint_symbol *symbol, unsigned char source[], int length) {
+    return zint_eanx_cc(symbol, source, length, 0 /*cc_rows*/);
+}
+
+/* vim: set ts=4 sw=4 et : */
