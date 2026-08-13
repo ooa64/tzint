@@ -378,12 +378,12 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     return TCL_ERROR;
   }
 
-  if ((enum options) cmd == TZINT_CMD_VERSION) {
+  if ((enum command) cmd == TZINT_CMD_VERSION) {
     Tcl_SetObjResult(interp, Tcl_NewStringObj(ZINT_VERSION, -1));
     return TCL_OK;
   }
 
-  if ((enum options) cmd == TZINT_CMD_SYMBOLOGIES) {
+  if ((enum command) cmd == TZINT_CMD_SYMBOLOGIES) {
     list = Tcl_NewListObj(0, NULL);
     for (i = 0; symbolTable[i].name != NULL; i++) {
       Tcl_ListObjAppendElement(interp, list, Tcl_NewStringObj(symbolTable[i].name, -1));
@@ -406,7 +406,8 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     goto cleanup;
   }
   
-  for (i = 4; i < objc; i++) {
+  // options come in pairs, so step over the option and its value together
+  for (i = 4; i < objc; i += 2) {
     if (i == objc-1) {
       Tcl_WrongNumArgs(interp, 1, objv, "? file|bits||eps|svg|xbm name|varName data ?-option value ...?");
       err = 1;
@@ -720,7 +721,6 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     if (err) {
       goto cleanup;
     }
-    i++;
   }
 
   if (stat > -1) {

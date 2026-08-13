@@ -1,5 +1,5 @@
-C Merge\strunk\sand\sbring\sthe\sREADME\sto\sthe\s2.16.0\sbackend\n\n-\sMerges\strunk,\swhich\scarries\sthe\sREADME\swritten\sfor\sthis\spackage\sinstead\sof\sthe\sTEA\ssample\stext\n-\sREADME\s-\snames\slibzint\s2.16.0\sand\sthe\ssymbologies\sthat\scame\swith\sit,\sand\slists\sall\seight\sfile\sformats\sthe\sfile\scommand\swrites,\sincluding\sthe\stxt\shex\sdump\n-\sREADME\s-\sdescribes\s-vectorscale,\sthe\sRGBA\scolour\sforms,\swhat\sthe\stwo\stest\sfiles\scover,\sand\sthat\sdoc/tzint.unsupported\sis\ssuperseded\sby\sthe\smanual\spage\n-\sEvery\sexample\swas\srun\sagainst\sthe\slibrary\sbuilt\sfrom\sthis\scheck-in
-D 2026-08-13T21:58:27.733
+C Silence\sthe\sthree\scompiler\swarnings\sin\stzint.c\n\n-\sgeneric/tzint.c\s-\sthe\scommand\sindex\sis\scast\sto\senum\scommand\srather\sthan\senum\soptions\sin\sthe\stwo\scomparisons\sagainst\sTZINT_CMD_VERSION\sand\sTZINT_CMD_SYMBOLOGIES\n-\sgeneric/tzint.c\s-\sthe\soption\sloop\ssteps\sby\stwo\sin\sits\sheader\sinstead\sof\sincrementing\sa\ssecond\stime\sin\sthe\sbody\n-\sNo\schange\sin\sbehaviour;\sbuilds\sfree\sof\swarnings\sunder\sTcl\s8.6.18\sand\s9.0.4
+D 2026-08-13T22:03:19.992
 F .gitattributes 733e36ea315cad1b0e3225455af021ee6fa653befa2f404373d26200b9918998
 F LICENSE.zint 7b6f5d696075597acb6e81020ff95339a3438dc1b298d3208877b3bac22ffe39
 F Makefile.in a51cf4515337c053a3fb340af124e9ae5d40369219e11580cf2a1a6170fab09a
@@ -110,7 +110,7 @@ F generic/telepen.c cdfa3cea4fc0ecd3205b3feed1e8a47ae20c20e42b17d5d879e4ae9b8970
 F generic/tif.c ca5c3ed48f9e8f77497d010d085cdd328f252b55b953ff3c5482445e1a312962
 F generic/tif.h 90b0e61265619de5507f7fe08cd2d45dafc42e8c2565e7f9410fdce5eeafb49b
 F generic/tif_lzw.h 41dca5170bcd6ff23f166e814eb9ac2dbe8be246648ef973bc2ba6403996a3c5
-F generic/tzint.c d25aae2672bd00e75e26300418da747fa2ecda2190ee4378572a2bb407a3305c
+F generic/tzint.c e0e2df2ecd4f32c9e558cb177481bf2a3e344733f306df388aa637107b2dfde9
 F generic/ultra.c dd10b9adc690c361b2e20da49cebbc6edb32f45bad34c096e71676731b425575
 F generic/upcean.c 91f20f98559a1d546676f66c18506c7d240f06a71d6cac45305263881fa92023
 F generic/vector.c cf7fba209131f707feb564a88cec3423f49d3531b51e42aa250fd25e8058071f
@@ -134,8 +134,8 @@ F win/makefile.vc 77a686f40c42668e0bcdd07ecad78cbb8c032e6dc9a82ed9ff9cb756f34812
 F win/nmakehlp.c 596eb953063417d11fd703856cb3342c47964e3e147c2542f8f237382b9c3be6
 F win/rules.vc 06f4eab1379d8741d904f40a425e23bb2d4e825d443c7f827a2e78eae2a6ac0c
 F win/tzint.rc bb1cf63b1b08daea8b07a9fc4a133a6170f76c81bdc650620f2ff4770112f6ce x
-P 19d41e195c17cad99e9738af683728322ea1839c48680c7c3b7ee399a96d93a8 1b524e2e8629efcd295c8dd1f370094e63c0c3b210cb0de4a1e55a604c6bda0f
-R bbe86b1174f20ea7158c8a66c294b73d
+P 7a3444a7e6258aa21e51fbb95dddea197c746ba967393839d44e651a3d94eb28
+R 6d68021ed8b2e0994c66c09cbaf7ebe6
 U alex
-Z 2ebbf7ef0faca9b0a9267597f7525df8
+Z 5a774d8aedc81ebab183928a519b029e
 # Remove this line to create a well-formed Fossil manifest.
