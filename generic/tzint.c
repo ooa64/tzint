@@ -214,6 +214,21 @@ static int HexColorCheck(Tcl_Obj *optval, char *color) {
     color[6] = '\0';
     return 1;
   }
+  // zint takes an alpha channel as a fourth pair of hex digits; the target
+  // fields are 16 bytes wide, so the 8 digits and the terminator fit
+  if (len == 4) {
+    color[0] = color[1] = cp[0];
+    color[2] = color[3] = cp[1];
+    color[4] = color[5] = cp[2];
+    color[6] = color[7] = cp[3];
+    color[8] = '\0';
+    return 1;
+  }
+  if (len == 8) {
+    strncpy(color, cp, 8);
+    color[8] = '\0';
+    return 1;
+  }
   return 0;
 }
 
@@ -521,7 +536,7 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       case TZINT_FG:
       case TZINT_FOREGROUND:
 	if (HexColorCheck(objv[i+1], zsymbol->fgcolour) == 0) {
-	  Tcl_SetObjResult(interp, Tcl_NewStringObj("foreground must have 6 hex digits", -1));
+	  Tcl_SetObjResult(interp, Tcl_NewStringObj("foreground must have 6 or 8 hex digits", -1));
 	  err = 1;
 	}
 	break;
@@ -529,7 +544,7 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       case TZINT_BG:
       case TZINT_BACKGROUND:
 	if (HexColorCheck(objv[i+1], zsymbol->bgcolour) == 0) {
-	  Tcl_SetObjResult(interp, Tcl_NewStringObj("background must have 6 hex digits", -1));
+	  Tcl_SetObjResult(interp, Tcl_NewStringObj("background must have 6 or 8 hex digits", -1));
 	  err = 1;
 	}
 	break;
