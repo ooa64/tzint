@@ -512,6 +512,79 @@ test encode-10.3 {valid data leaves the stat error message empty} -body {
 
 
 #
+# warnings and ECI
+#
+# zint answers with 1 to 4 when it produced the symbol but has something to say,
+# and from 5 on when it produced nothing. A warning has to keep the output.
+#
+
+test encode-15.1 {a warning still delivers the symbol} -body {
+  # the euro sign forces zint out of its default character set
+  set rc [::tzint::Encode bits b "Betrag 12,34 EUR €" -barcode qrcode -stat st]
+  list [expr {$rc > 0 && $rc < 5}] [dict exists $b bits] \
+       [expr {[llength [dict get $b bits]] > 0}]
+} -result {1 1 1}
+
+test encode-15.2 {the warning message is passed on in stat} -body {
+  ::tzint::Encode bits b "Betrag 12,34 EUR €" -barcode qrcode -stat st
+  string match "Warning*" [dict get $st error]
+} -result 1
+
+test encode-15.3 {a warning delivers the vector output as well} -body {
+  set rc [::tzint::Encode svg s "Betrag 12,34 EUR €" -barcode qrcode]
+  list [expr {$rc > 0 && $rc < 5}] [expr {[string length $s] > 0}] \
+       [string match {*</svg>} [string trimright $s]]
+} -result {1 1 1}
+
+test encode-15.4 {a warning delivers a written file as well} -setup {
+  set out [file join [temporaryDirectory] tzint-15-4.svg]
+  file delete -force $out
+} -body {
+  set rc [::tzint::Encode file $out "Betrag 12,34 EUR €" -barcode qrcode]
+  list [expr {$rc > 0 && $rc < 5}] [file exists $out] [expr {[file size $out] > 0}]
+} -cleanup {
+  file delete -force $out
+} -result {1 1 1}
+
+test encode-15.5 {an error still delivers nothing} -body {
+  set b {}
+  set rc [::tzint::Encode bits b ABCDEFGHIJKL -barcode ean13 -stat st]
+  list [expr {$rc >= 5}] [expr {$b eq ""}] [string match "Error*" [dict get $st error]]
+} -result {1 1 1}
+
+test encode-15.6 {eci forces the character set and silences the warning} -body {
+  set data "Betrag 12,34 EUR €"
+  set without [::tzint::Encode bits b $data -barcode qrcode]
+  set with [::tzint::Encode bits b $data -barcode qrcode -eci 26]
+  list [expr {$without > 0 && $without < 5}] $with
+} -result {1 0}
+
+test encode-15.7 {an eci out of range is rejected} -body {
+  set accepted {}
+  foreach v {-1 1000000} {
+    if {![catch {::tzint::Encode bits b 12345678 -barcode qrcode -eci $v}]} {
+      lappend accepted $v
+    }
+  }
+  set accepted
+} -result {}
+
+test encode-15.8 {the eci codes zint excludes come back as an error} -body {
+  set bad {}
+  foreach v {1 2 14 19} {
+    if {[::tzint::Encode bits b 12345678 -barcode qrcode -eci $v] < 5} {
+      lappend bad $v
+    }
+  }
+  set bad
+} -result {}
+
+test encode-15.9 {a non numeric eci is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode qrcode -eci notanumber
+} -returnCodes error -match glob -result {expected integer*}
+
+
+#
 # every symbology in the table can be driven
 #
 

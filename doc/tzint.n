@@ -43,7 +43,7 @@ Performs one of several barcode encoding operations, depending on option. The le
 .br
 \fBfile\fR command encodes a barcode into the file \fIfileName\fR. The output format is taken from the file name extension, see FILE FORMATS below.
 .br
-tzint::Encode will return 0 if no error occurs. More information can be obtained by option \fB\-stat\fR.
+tzint::Encode returns the status libzint reports: \fI0\fR when it has nothing to remark, \fI1\fR to \fI4\fR for a warning and \fI5\fR or above for a failure. On a warning the symbol has been produced and is handed over as usual, so a caller that only draws the result may ignore the value; on a failure nothing is written and the named variable stays untouched. The message belonging to either is the \fIerror\fR entry of \fB\-stat\fR.
 .PP
 \fBtzint::manifest\fR returns a dictionary describing the build of the package itself, with the keys \fIversion\fR, \fIdate\fR, \fIcheck-in\fR, \fIbuild-hash\fR and \fIuuid\fR. Note that this is the version of tzint, not the version of libzint, which the \fBversion\fR command returns.
 .br
@@ -70,6 +70,8 @@ The symbol can be rotated through four orientations using the \fB\-rotate\fR opt
 The scale of the image can be altered using the \fB\-scale\fR \fIinteger\fR option followed by a multiple of the default x-dimension.
 .br
 For vector output, that is the \fBeps\fR and \fBsvg\fR commands and the \fBfile\fR command writing EMF, EPS or SVG, tzint draws one unit per module. libzint itself draws two units per module for these formats, the same size the raster output uses. \fB\-vectorscale\fR \fIcompat\fR (the default) keeps the size tzint has always produced, \fB\-vectorscale\fR \fIzint\fR passes \fB\-scale\fR to libzint untouched and yields a symbol twice as wide, matching the raster output. The option has no effect on raster output.
+.PP
+Input outside the character set a symbology uses by default makes libzint pick an Extended Channel Interpretation on its own and answer with a warning. \fB\-eci\fR \fIinteger\fR chooses one instead, which both settles the encoding and removes the warning; \fI26\fR is UTF-8 and \fI3\fR is ISO 8859-1. This matters where the reader is told which character set to expect, as with the EPC QR code of a bank transfer, whose data names its own encoding. Permitted are \fI0\fR to \fI999999\fR, with \fI1\fR, \fI2\fR, \fI14\fR and \fI19\fR excluded by libzint.
 .PP
 The resolution recorded in the output file can be set with \fB\-dpi\fR \fInumber\fR or, in the unit libzint itself uses, with \fB\-dpmm\fR \fInumber\fR dots per millimetre. One is converted into the other, so whichever is given last applies. The value reaches the formats that carry a resolution, \fIBMP\fR, \fIEMF\fR, \fIPCX\fR, \fIPNG\fR and \fITIF\fR, and is ignored by the others. Without either option, or with a value of \fI0\fR, the file carries no resolution at all, which is the default. The upper limit is \fI25400\fR dpi, that is \fI1000\fR dots per millimetre.
 .PP
