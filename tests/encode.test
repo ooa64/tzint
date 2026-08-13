@@ -772,6 +772,35 @@ test encode-13.3 {colours of an unsupported length are rejected} -body {
   set accepted
 } -result {}
 
+test encode-13.6 {colours are read in either case} -body {
+  set bad {}
+  foreach c {F 3AB FF0000 3ABA FF000080} {
+    if {[catch {::tzint::Encode bits b 12345678 -barcode code128 -fg $c} rc]
+        || $rc != 0} {
+      lappend bad $c
+    }
+  }
+  set bad
+} -result {}
+
+test encode-13.7 {anything but a hex digit is rejected} -body {
+  set accepted {}
+  foreach c {z zzz zzzzzz ff00gg 12345g "ff 000" ff-000} {
+    if {![catch {::tzint::Encode bits b 12345678 -barcode code128 -fg $c}]} {
+      lappend accepted $c
+    }
+  }
+  set accepted
+} -result {}
+
+test encode-13.8 {an empty colour is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -fg {}
+} -returnCodes error -result {foreground must have 6 or 8 hex digits}
+
+test encode-13.9 {a hash on its own is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -bg #
+} -returnCodes error -result {background must have 6 or 8 hex digits}
+
 test encode-13.4 {an alpha channel puts a transparency chunk into the png} -setup {
   set opaque [file join [temporaryDirectory] tzint-13-4a.png]
   set alpha [file join [temporaryDirectory] tzint-13-4b.png]

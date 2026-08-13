@@ -191,12 +191,25 @@ static int IsVectorFile(const char *name) {
 }
 
 
+static int IsHexDigit(char c) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+
 static int HexColorCheck(Tcl_Obj *optval, char *color) {
   char *cp;
-  Tcl_Size len;
+  Tcl_Size len, i;
 
   cp = Tcl_GetStringFromObj(optval, &len);
   if (len > 0 && *cp == '#') cp++, len--;
+  // Check the digits before the length: without this a value such as "zzz"
+  // passes as a short form here and libzint rejects it later with a status
+  // code instead of the error message the other bad values get.
+  for (i = 0; i < len; i++) {
+    if (!IsHexDigit(cp[i])) {
+      return 0;
+    }
+  }
   if (len == 1) {
     color[0] = color[1] = color[2] = color[3] = color[4] = color[5] = cp[0];
     color[6] = '\0';
