@@ -1,21 +1,20 @@
 /* ps.c - Post Script output */
-
 /*
     libzint - the open source barcode library
-    Copyright (C) 2009 Robin Stuart <robin@zint.org.uk>
+    Copyright (C) 2009-2025 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,751 +25,504 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
-*/
+ */
+/* SPDX-License-Identifier: BSD-3-Clause */
 
-#include <locale.h>
-#include <string.h>
-#include <stdlib.h>
+#include <assert.h>
+#include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include "common.h"
+#include "filemem.h"
+#include "output.h"
 
-#define SSET	"0123456789ABCDEF"
-
-/* This file has expanded quite a bit since version 1.5 in order to accomodate
-   the formatting rules for EAN and UPC symbols as set out in EN 797:1995 - the
-   down side of this support is that the code is now vertually unreadable! */
-
-int ps_plot(struct zint_symbol *symbol)
-{
-	int i, block_width, latch, r, this_row;
-	float textpos, large_bar_height, preset_height, row_height, row_posn;
-	FILE *feps;
-	int fgred, fggrn, fgblu, bgred, bggrn, bgblu;
-	float red_ink, green_ink, blue_ink, red_paper, green_paper, blue_paper;
-	int error_number = 0;
-	int textoffset, xoffset, yoffset, textdone, main_width;
-	char textpart[10], addon[6];
-	int large_bar_count, comp_offset;
-	float addon_text_posn;
-	float scaler = symbol->scale;
-	float default_text_posn;
-	int plot_text = 1;
-	const char *locale = NULL;
-
-	row_height=0;
-	textdone = 0;
-	main_width = symbol->width;
-	strcpy(addon, "");
-	comp_offset = 0;
-	addon_text_posn = 0.0;
-
-	if((symbol->output_options & BARCODE_STDOUT) != 0) {
-		feps = stdout;
-	} else {
-		feps = fopen(symbol->outfile, "w");
-	}
-	if(feps == NULL) {
-		strcpy(symbol->errtxt, "Could not open output file");
-		return ERROR_FILE_ACCESS;
-	}
-
-	/* sort out colour options */
-	to_upper((unsigned char*)symbol->fgcolour);
-	to_upper((unsigned char*)symbol->bgcolour);
-
-	if(strlen(symbol->fgcolour) != 6) {
-		strcpy(symbol->errtxt, "Malformed foreground colour target");
-		return ERROR_INVALID_OPTION;
-	}
-	if(strlen(symbol->bgcolour) != 6) {
-		strcpy(symbol->errtxt, "Malformed background colour target");
-		return ERROR_INVALID_OPTION;
-	}
-	error_number = is_sane(SSET, (unsigned char*)symbol->fgcolour, strlen(symbol->fgcolour));
-	if (error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Malformed foreground colour target");
-		return ERROR_INVALID_OPTION;
-	}
-	error_number = is_sane(SSET, (unsigned char*)symbol->bgcolour, strlen(symbol->bgcolour));
-	if (error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Malformed background colour target");
-		return ERROR_INVALID_OPTION;
-	}
-	locale = setlocale(LC_ALL, "C");
-
-	fgred = (16 * ctoi(symbol->fgcolour[0])) + ctoi(symbol->fgcolour[1]);
-	fggrn = (16 * ctoi(symbol->fgcolour[2])) + ctoi(symbol->fgcolour[3]);
-	fgblu = (16 * ctoi(symbol->fgcolour[4])) + ctoi(symbol->fgcolour[5]);
-	bgred = (16 * ctoi(symbol->bgcolour[0])) + ctoi(symbol->bgcolour[1]);
-	bggrn = (16 * ctoi(symbol->bgcolour[2])) + ctoi(symbol->bgcolour[3]);
-	bgblu = (16 * ctoi(symbol->bgcolour[4])) + ctoi(symbol->bgcolour[5]);
-	red_ink = fgred / 256.0;
-	green_ink = fggrn / 256.0;
-	blue_ink = fgblu / 256.0;
-	red_paper = bgred / 256.0;
-	green_paper = bggrn / 256.0;
-	blue_paper = bgblu / 256.0;
-
-	if (symbol->height == 0) {
-		symbol->height = 50;
-	}
-
-	large_bar_count = 0;
-	preset_height = 0.0;
-	for(i = 0; i < symbol->rows; i++) {
-		preset_height += symbol->row_height[i];
-		if(symbol->row_height[i] == 0) {
-			large_bar_count++;
-		}
-	}
-	large_bar_height = (symbol->height - preset_height) / large_bar_count;
-
-	if (large_bar_count == 0) {
-		symbol->height = preset_height;
-	}
-
-	while(!(module_is_set(symbol, symbol->rows - 1, comp_offset))) {
-		comp_offset++;
-	}
-
-	/* Certain symbols need whitespace otherwise characters get chopped off the sides */
-	if ((((symbol->symbology == BARCODE_EANX) && (symbol->rows == 1)) || (symbol->symbology == BARCODE_EANX_CC))
-		|| (symbol->symbology == BARCODE_ISBNX)) {
-		switch(ustrlen(symbol->text)) {
-			case 13: /* EAN 13 */
-			case 16:
-			case 19:
-				if(symbol->whitespace_width == 0) {
-					symbol->whitespace_width = 10;
-				}
-				main_width = 96 + comp_offset;
-				break;
-			default:
-				main_width = 68 + comp_offset;
-		}
-	}
-
-	if (((symbol->symbology == BARCODE_UPCA) && (symbol->rows == 1)) || (symbol->symbology == BARCODE_UPCA_CC)) {
-		if(symbol->whitespace_width == 0) {
-			symbol->whitespace_width = 10;
-			main_width = 96 + comp_offset;
-		}
-	}
-
-	if (((symbol->symbology == BARCODE_UPCE) && (symbol->rows == 1)) || (symbol->symbology == BARCODE_UPCE_CC)) {
-		if(symbol->whitespace_width == 0) {
-			symbol->whitespace_width = 10;
-			main_width = 51 + comp_offset;
-		}
-	}
-
-	latch = 0;
-	r = 0;
-	/* Isolate add-on text */
-	if(is_extendable(symbol->symbology)) {
-		for(i = 0; i < ustrlen(symbol->text); i++) {
-			if (latch == 1) {
-				addon[r] = symbol->text[i];
-				r++;
-			}
-			if (symbol->text[i] == '+') {
-				latch = 1;
-			}
-		}
-	}
-	addon[r] = '\0';
-
-	if((symbol->show_hrt == 0) || (ustrlen(symbol->text) == 0)) {
-		plot_text = 0;
-	}
-	if(plot_text) {
-		textoffset = 9;
-	} else {
-		textoffset = 0;
-	}
-	xoffset = symbol->border_width + symbol->whitespace_width;
-	yoffset = symbol->border_width;
-
-	/* Start writing the header */
-	fprintf(feps, "%%!PS-Adobe-3.0 EPSF-3.0\n");
-	fprintf(feps, "%%%%Creator: Zint %s\n", ZINT_VERSION);
-	if(ustrlen(symbol->text) != 0) {
-		fprintf(feps, "%%%%Title: %s\n",symbol->text);
-	} else {
-		fprintf(feps, "%%%%Title: Zint Generated Symbol\n");
-	}
-	fprintf(feps, "%%%%Pages: 0\n");
-	if(symbol->symbology != BARCODE_MAXICODE) {
-		fprintf(feps, "%%%%BoundingBox: 0 0 %d %d\n", roundup((symbol->width + xoffset + xoffset) * scaler), roundup((symbol->height + textoffset + yoffset + yoffset) * scaler));
-	} else {
-		fprintf(feps, "%%%%BoundingBox: 0 0 %d %d\n", roundup((74.0 + xoffset + xoffset) * scaler), roundup((72.0 + yoffset + yoffset) * scaler));
-	}
-	fprintf(feps, "%%%%EndComments\n");
-
-	/* Definitions */
-	fprintf(feps, "/TL { setlinewidth moveto lineto stroke } bind def\n");
-	fprintf(feps, "/TC { moveto 0 360 arc 360 0 arcn fill } bind def\n");
-	fprintf(feps, "/TH { 0 setlinewidth moveto lineto lineto lineto lineto lineto closepath fill } bind def\n");
-	fprintf(feps, "/TB { 2 copy } bind def\n");
-	fprintf(feps, "/TR { newpath 4 1 roll exch moveto 1 index 0 rlineto 0 exch rlineto neg 0 rlineto closepath fill } bind def\n");
-	fprintf(feps, "/TE { pop pop } bind def\n");
-
-	fprintf(feps, "newpath\n");
-
-	/* Now the actual representation */
-	fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-	fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_paper, green_paper, blue_paper);
-	fprintf(feps, "%.2f 0.00 TB 0.00 %.2f TR\n", (symbol->height + textoffset + yoffset + yoffset) * scaler, (symbol->width + xoffset + xoffset) * scaler);
-
-	if(((symbol->output_options & BARCODE_BOX) != 0) || ((symbol->output_options & BARCODE_BIND) != 0)) {
-		default_text_posn = 0.5 * scaler;
-	} else {
-		default_text_posn = (symbol->border_width + 0.5) * scaler;
-	}
-
-	if(symbol->symbology == BARCODE_MAXICODE) {
-		/* Maxicode uses hexagons */
-		float ax, ay, bx, by, cx, cy, dx, dy, ex, ey, fx, fy, mx, my;
-
-
-		textoffset = 0.0;
-		if (((symbol->output_options & BARCODE_BOX) != 0) || ((symbol->output_options & BARCODE_BIND) != 0)) {
-			fprintf(feps, "TE\n");
-			fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-			fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", symbol->border_width * scaler, textoffset * scaler, 0.0, (74.0 + xoffset + xoffset) * scaler);
-			fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", symbol->border_width * scaler, (textoffset + 72.0 + symbol->border_width) * scaler, 0.0, (74.0 + xoffset + xoffset) * scaler);
-		}
-		if((symbol->output_options & BARCODE_BOX) != 0) {
-			/* side bars */
-			fprintf(feps, "TE\n");
-			fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-			fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", (72.0 + (2 * symbol->border_width)) * scaler, textoffset * scaler, 0.0, symbol->border_width * scaler);
-			fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", (72.0 + (2 * symbol->border_width)) * scaler, textoffset * scaler, (74.0 + xoffset + xoffset - symbol->border_width) * scaler, symbol->border_width * scaler);
-		}
-
-		fprintf(feps, "TE\n");
-		fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-		fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-		fprintf(feps, "%.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f TC\n", (35.76 + xoffset) * scaler, (35.60 + yoffset) * scaler, 10.85 * scaler, (35.76 + xoffset) * scaler, (35.60 + yoffset) * scaler, 8.97 * scaler, (44.73 + xoffset) * scaler, (35.60 + yoffset) * scaler);
-		fprintf(feps, "%.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f TC\n", (35.76 + xoffset) * scaler, (35.60 + yoffset) * scaler, 7.10 * scaler, (35.76 + xoffset) * scaler, (35.60 + yoffset) * scaler, 5.22 * scaler, (40.98 + xoffset) * scaler, (35.60 + yoffset) * scaler);
-		fprintf(feps, "%.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f TC\n", (35.76 + xoffset) * scaler, (35.60 + yoffset) * scaler, 3.31 * scaler, (35.76 + xoffset) * scaler, (35.60 + yoffset) * scaler, 1.43 * scaler, (37.19 + xoffset) * scaler, (35.60 + yoffset) * scaler);
-		for(r = 0; r < symbol->rows; r++) {
-			for(i = 0; i < symbol->width; i++) {
-				if(module_is_set(symbol, r, i)) {
-					/* Dump a hexagon */
-					my = ((symbol->rows - r - 1)) * 2.135 + 1.43;
-					ay = my + 1.0 + yoffset;
-					by = my + 0.5 + yoffset;
-					cy = my - 0.5 + yoffset;
-					dy = my - 1.0 + yoffset;
-					ey = my - 0.5 + yoffset;
-					fy = my + 0.5 + yoffset;
-
-					mx = 2.46 * i + 1.23 + (r & 1 ? 1.23 : 0);
-
-					ax = mx + xoffset;
-					bx = mx + 0.86 + xoffset;
-					cx = mx + 0.86 + xoffset;
-					dx = mx + xoffset;
-					ex = mx - 0.86 + xoffset;
-					fx = mx - 0.86 + xoffset;
-					fprintf(feps, "%.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f TH\n", ax * scaler, ay * scaler, bx * scaler, by * scaler, cx * scaler, cy * scaler, dx * scaler, dy * scaler, ex * scaler, ey * scaler, fx * scaler, fy * scaler);
-				}
-			}
-		}
-	}
-
-	if(symbol->symbology != BARCODE_MAXICODE) {
-		/* everything else uses rectangles (or squares) */
-		/* Works from the bottom of the symbol up */
-		int addon_latch = 0;
-
-		for(r = 0; r < symbol->rows; r++) {
-			this_row = symbol->rows - r - 1; /* invert r otherwise plots upside down */
-			if(symbol->row_height[this_row] == 0) {
-				row_height = large_bar_height;
-			} else {
-				row_height = symbol->row_height[this_row];
-			}
-			row_posn = 0;
-			for(i = 0; i < r; i++) {
-				if(symbol->row_height[symbol->rows - i - 1] == 0) {
-					row_posn += large_bar_height;
-				} else {
-					row_posn += symbol->row_height[symbol->rows - i - 1];
-				}
-			}
-			row_posn += (textoffset + yoffset);
-
-			fprintf(feps, "TE\n");
-			fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-			fprintf(feps, "%.2f %.2f ", row_height * scaler, row_posn * scaler);
-			i = 0;
-			if(module_is_set(symbol, this_row, 0)) {
-				latch = 1;
-			} else {
-				latch = 0;
-			}
-
-			do {
-				block_width = 0;
-				do {
-					block_width++;
-				} while (module_is_set(symbol, this_row, i + block_width) == module_is_set(symbol, this_row, i));
-				if((addon_latch == 0) && (r == 0) && (i > main_width)) {
-					fprintf(feps, "TE\n");
-					fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-					fprintf(feps, "%.2f %.2f ", (row_height - 5.0) * scaler, (row_posn - 5.0) * scaler);
-					addon_text_posn = row_posn + row_height - 8.0;
-					addon_latch = 1;
-				}
-				if(latch == 1) {
-					/* a bar */
-					fprintf(feps, "TB %.2f %.2f TR\n", (i + xoffset) * scaler, block_width * scaler);
-					latch = 0;
-				} else {
-					/* a space */
-					latch = 1;
-				}
-				i += block_width;
-
-			} while (i < symbol->width);
-		}
-	}
-	/* That's done the actual data area, everything else is human-friendly */
-
-	xoffset += comp_offset;
-
-	if (plot_text) {
-		if ((((symbol->symbology == BARCODE_EANX) && (symbol->rows == 1)) || (symbol->symbology == BARCODE_EANX_CC)) ||
-			(symbol->symbology == BARCODE_ISBNX)) {
-			/* guard bar extensions and text formatting for EAN8 and EAN13 */
-			switch(ustrlen(symbol->text)) {
-				case 8: /* EAN-8 */
-				case 11:
-				case 14:
-					fprintf(feps, "TE\n");
-					fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-					fprintf(feps, "%.2f %.2f ", 5.0 * scaler, (4.0 + yoffset) * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (0 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (2 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (32 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (34 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (64 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (66 + xoffset) * scaler, 1 * scaler);
-					for(i = 0; i < 4; i++) {
-						textpart[i] = symbol->text[i];
-					}
-					textpart[4] = '\0';
-					fprintf(feps, "TE\n");
-					fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = 17;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-					fprintf(feps, " (%s) stringwidth\n", textpart);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", textpart);
-					fprintf(feps, "setmatrix\n");
-					for(i = 0; i < 4; i++) {
-						textpart[i] = symbol->text[i + 4];
-					}
-					textpart[4] = '\0';
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = 50;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-					fprintf(feps, " (%s) stringwidth\n", textpart);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", textpart);
-					fprintf(feps, "setmatrix\n");
-					textdone = 1;
-					switch(strlen(addon)) {
-						case 2:
-							fprintf(feps, "matrix currentmatrix\n");
-							fprintf(feps, "/Helvetica findfont\n");
-							fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-							textpos = xoffset + 86;
-							fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", textpos * scaler, addon_text_posn * scaler);
-							fprintf(feps, " (%s) stringwidth\n", addon);
-							fprintf(feps, "pop\n");
-							fprintf(feps, "-2 div 0 rmoveto\n");
-							fprintf(feps, " (%s) show\n", addon);
-							fprintf(feps, "setmatrix\n");
-							break;
-						case 5:
-							fprintf(feps, "matrix currentmatrix\n");
-							fprintf(feps, "/Helvetica findfont\n");
-							fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-							textpos = xoffset + 100;
-							fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", textpos * scaler, addon_text_posn * scaler);
-							fprintf(feps, " (%s) stringwidth\n", addon);
-							fprintf(feps, "pop\n");
-							fprintf(feps, "-2 div 0 rmoveto\n");
-							fprintf(feps, " (%s) show\n", addon);
-							fprintf(feps, "setmatrix\n");
-							break;
-					}
-
-					break;
-				case 13: /* EAN 13 */
-				case 16:
-				case 19:
-					fprintf(feps, "TE\n");
-					fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-					fprintf(feps, "%.2f %.2f ", 5.0 * scaler, (4.0 + yoffset) * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (0 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (2 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (46 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (48 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (92 + xoffset) * scaler, 1 * scaler);
-					fprintf(feps, "TB %.2f %.2f TR\n", (94 + xoffset) * scaler, 1 * scaler);
-					textpart[0] = symbol->text[0];
-					textpart[1] = '\0';
-					fprintf(feps, "TE\n");
-					fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = -7;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-					fprintf(feps, " (%s) stringwidth\n", textpart);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", textpart);
-					fprintf(feps, "setmatrix\n");
-					for(i = 0; i < 6; i++) {
-						textpart[i] = symbol->text[i + 1];
-					}
-					textpart[6] = '\0';
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = 24;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-					fprintf(feps, " (%s) stringwidth\n", textpart);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", textpart);
-					fprintf(feps, "setmatrix\n");
-					for(i = 0; i < 6; i++) {
-						textpart[i] = symbol->text[i + 7];
-					}
-					textpart[6] = '\0';
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = 71;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-					fprintf(feps, " (%s) stringwidth\n", textpart);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", textpart);
-					fprintf(feps, "setmatrix\n");
-					textdone = 1;
-					switch(strlen(addon)) {
-						case 2:
-							fprintf(feps, "matrix currentmatrix\n");
-							fprintf(feps, "/Helvetica findfont\n");
-							fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-							textpos = xoffset + 114;
-							fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", textpos * scaler, addon_text_posn * scaler);
-							fprintf(feps, " (%s) stringwidth\n", addon);
-							fprintf(feps, "pop\n");
-							fprintf(feps, "-2 div 0 rmoveto\n");
-							fprintf(feps, " (%s) show\n", addon);
-							fprintf(feps, "setmatrix\n");
-							break;
-						case 5:
-							fprintf(feps, "matrix currentmatrix\n");
-							fprintf(feps, "/Helvetica findfont\n");
-							fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-							textpos = xoffset + 128;
-							fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", textpos * scaler, addon_text_posn * scaler);
-							fprintf(feps, " (%s) stringwidth\n", addon);
-							fprintf(feps, "pop\n");
-							fprintf(feps, "-2 div 0 rmoveto\n");
-							fprintf(feps, " (%s) show\n", addon);
-							fprintf(feps, "setmatrix\n");
-							break;
-					}
-					break;
-
-			}
-		}
-
-		if (((symbol->symbology == BARCODE_UPCA) && (symbol->rows == 1)) || (symbol->symbology == BARCODE_UPCA_CC)) {
-			/* guard bar extensions and text formatting for UPCA */
-			fprintf(feps, "TE\n");
-			fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-			fprintf(feps, "%.2f %.2f ", 5.0 * scaler, (4.0 + yoffset) * scaler);
-			latch = 1;
-
-			i = 0 + comp_offset;
-			do {
-				block_width = 0;
-				do {
-					block_width++;
-				} while (module_is_set(symbol, symbol->rows - 1, i + block_width) == module_is_set(symbol, symbol->rows - 1, i));
-				if(latch == 1) {
-					/* a bar */
-					fprintf(feps, "TB %.2f %.2f TR\n", (i + xoffset - comp_offset) * scaler, block_width * scaler);
-					latch = 0;
-				} else {
-					/* a space */
-					latch = 1;
-				}
-				i += block_width;
-			} while (i < 11 + comp_offset);
-			fprintf(feps, "TB %.2f %.2f TR\n", (46 + xoffset) * scaler, 1 * scaler);
-			fprintf(feps, "TB %.2f %.2f TR\n", (48 + xoffset) * scaler, 1 * scaler);
-			latch = 1;
-			i = 85 + comp_offset;
-			do {
-				block_width = 0;
-				do {
-					block_width++;
-				} while (module_is_set(symbol, symbol->rows - 1, i + block_width) == module_is_set(symbol, symbol->rows - 1, i));
-				if(latch == 1) {
-					/* a bar */
-					fprintf(feps, "TB %.2f %.2f TR\n", (i + xoffset - comp_offset) * scaler, block_width * scaler);
-					latch = 0;
-				} else {
-					/* a space */
-					latch = 1;
-				}
-				i += block_width;
-			} while (i < 96 + comp_offset);
-			textpart[0] = symbol->text[0];
-			textpart[1] = '\0';
-			fprintf(feps, "TE\n");
-			fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-			fprintf(feps, "matrix currentmatrix\n");
-			fprintf(feps, "/Helvetica findfont\n");
-			fprintf(feps, "%.2f scalefont setfont\n", 8.0 * scaler);
-			textpos = -5;
-			fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-			fprintf(feps, " (%s) stringwidth\n", textpart);
-			fprintf(feps, "pop\n");
-			fprintf(feps, "-2 div 0 rmoveto\n");
-			fprintf(feps, " (%s) show\n", textpart);
-			fprintf(feps, "setmatrix\n");
-			for(i = 0; i < 5; i++) {
-				textpart[i] = symbol->text[i + 1];
-			}
-			textpart[5] = '\0';
-			fprintf(feps, "matrix currentmatrix\n");
-			fprintf(feps, "/Helvetica findfont\n");
-			fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-			textpos = 27;
-			fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-			fprintf(feps, " (%s) stringwidth\n", textpart);
-			fprintf(feps, "pop\n");
-			fprintf(feps, "-2 div 0 rmoveto\n");
-			fprintf(feps, " (%s) show\n", textpart);
-			fprintf(feps, "setmatrix\n");
-			for(i = 0; i < 5; i++) {
-				textpart[i] = symbol->text[i + 6];
-			}
-			textpart[6] = '\0';
-			fprintf(feps, "matrix currentmatrix\n");
-			fprintf(feps, "/Helvetica findfont\n");
-			fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-			textpos = 68;
-			fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-			fprintf(feps, " (%s) stringwidth\n", textpart);
-			fprintf(feps, "pop\n");
-			fprintf(feps, "-2 div 0 rmoveto\n");
-			fprintf(feps, " (%s) show\n", textpart);
-			fprintf(feps, "setmatrix\n");
-			textpart[0] = symbol->text[11];
-			textpart[1] = '\0';
-			fprintf(feps, "matrix currentmatrix\n");
-			fprintf(feps, "/Helvetica findfont\n");
-			fprintf(feps, "%.2f scalefont setfont\n", 8.0 * scaler);
-			textpos = 100;
-			fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-			fprintf(feps, " (%s) stringwidth\n", textpart);
-			fprintf(feps, "pop\n");
-			fprintf(feps, "-2 div 0 rmoveto\n");
-			fprintf(feps, " (%s) show\n", textpart);
-			fprintf(feps, "setmatrix\n");
-			textdone = 1;
-			switch(strlen(addon)) {
-				case 2:
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = xoffset + 116;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", textpos * scaler, addon_text_posn * scaler);
-					fprintf(feps, " (%s) stringwidth\n", addon);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", addon);
-					fprintf(feps, "setmatrix\n");
-					break;
-				case 5:
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = xoffset + 130;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", textpos * scaler, addon_text_posn * scaler);
-					fprintf(feps, " (%s) stringwidth\n", addon);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", addon);
-					fprintf(feps, "setmatrix\n");
-					break;
-			}
-
-		}
-
-		if (((symbol->symbology == BARCODE_UPCE) && (symbol->rows == 1)) || (symbol->symbology == BARCODE_UPCE_CC)) {
-			/* guard bar extensions and text formatting for UPCE */
-			fprintf(feps, "TE\n");
-			fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-			fprintf(feps, "%.2f %.2f ", 5.0 * scaler, (4.0 + yoffset) * scaler);
-			fprintf(feps, "TB %.2f %.2f TR\n", (0 + xoffset) * scaler, 1 * scaler);
-			fprintf(feps, "TB %.2f %.2f TR\n", (2 + xoffset) * scaler, 1 * scaler);
-			fprintf(feps, "TB %.2f %.2f TR\n", (46 + xoffset) * scaler, 1 * scaler);
-			fprintf(feps, "TB %.2f %.2f TR\n", (48 + xoffset) * scaler, 1 * scaler);
-			fprintf(feps, "TB %.2f %.2f TR\n", (50 + xoffset) * scaler, 1 * scaler);
-			textpart[0] = symbol->text[0];
-			textpart[1] = '\0';
-			fprintf(feps, "TE\n");
-			fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-			fprintf(feps, "matrix currentmatrix\n");
-			fprintf(feps, "/Helvetica findfont\n");
-			fprintf(feps, "%.2f scalefont setfont\n", 8.0 * scaler);
-			textpos = -5;
-			fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-			fprintf(feps, " (%s) stringwidth\n", textpart);
-			fprintf(feps, "pop\n");
-			fprintf(feps, "-2 div 0 rmoveto\n");
-			fprintf(feps, " (%s) show\n", textpart);
-			fprintf(feps, "setmatrix\n");
-			for(i = 0; i < 6; i++) {
-				textpart[i] = symbol->text[i + 1];
-			}
-			textpart[6] = '\0';
-			fprintf(feps, "matrix currentmatrix\n");
-			fprintf(feps, "/Helvetica findfont\n");
-			fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-			textpos = 24;
-			fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-			fprintf(feps, " (%s) stringwidth\n", textpart);
-			fprintf(feps, "pop\n");
-			fprintf(feps, "-2 div 0 rmoveto\n");
-			fprintf(feps, " (%s) show\n", textpart);
-			fprintf(feps, "setmatrix\n");
-			textpart[0] = symbol->text[7];
-			textpart[1] = '\0';
-			fprintf(feps, "matrix currentmatrix\n");
-			fprintf(feps, "/Helvetica findfont\n");
-			fprintf(feps, "%.2f scalefont setfont\n", 8.0 * scaler);
-			textpos = 55;
-			fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-			fprintf(feps, " (%s) stringwidth\n", textpart);
-			fprintf(feps, "pop\n");
-			fprintf(feps, "-2 div 0 rmoveto\n");
-			fprintf(feps, " (%s) show\n", textpart);
-			fprintf(feps, "setmatrix\n");
-			textdone = 1;
-			switch(strlen(addon)) {
-				case 2:
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = xoffset + 70;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", textpos * scaler, addon_text_posn * scaler);
-					fprintf(feps, " (%s) stringwidth\n", addon);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", addon);
-					fprintf(feps, "setmatrix\n");
-					break;
-				case 5:
-					fprintf(feps, "matrix currentmatrix\n");
-					fprintf(feps, "/Helvetica findfont\n");
-					fprintf(feps, "%.2f scalefont setfont\n", 11.0 * scaler);
-					textpos = xoffset + 84;
-					fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", textpos * scaler, addon_text_posn * scaler);
-					fprintf(feps, " (%s) stringwidth\n", addon);
-					fprintf(feps, "pop\n");
-					fprintf(feps, "-2 div 0 rmoveto\n");
-					fprintf(feps, " (%s) show\n", addon);
-					fprintf(feps, "setmatrix\n");
-					break;
-			}
-
-		}
-	} /* if (plot_text) */
-
-	xoffset -= comp_offset;
-
-	switch(symbol->symbology) {
-		case BARCODE_MAXICODE:
-			/* Do nothing! (It's already been done) */
-			break;
-		default:
-			if((symbol->output_options & BARCODE_BIND) != 0) {
-				if((symbol->rows > 1) && (is_stackable(symbol->symbology) == 1)) {
-					/* row binding */
-					fprintf(feps, "TE\n");
-					fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-					for(r = 1; r < symbol->rows; r++) {
-						fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", 2.0 * scaler, ((r * row_height) + textoffset + yoffset - 1) * scaler, xoffset * scaler, symbol->width * scaler);
-					}
-				}
-			}
-			if (((symbol->output_options & BARCODE_BOX) != 0) || ((symbol->output_options & BARCODE_BIND) != 0)) {
-				fprintf(feps, "TE\n");
-				fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-				fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", symbol->border_width * scaler, textoffset * scaler, 0.0, (symbol->width + xoffset + xoffset) * scaler);
-				fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", symbol->border_width * scaler, (textoffset + symbol->height + symbol->border_width) * scaler, 0.0, (symbol->width + xoffset + xoffset) * scaler);
-			}
-			if((symbol->output_options & BARCODE_BOX) != 0) {
-				/* side bars */
-				fprintf(feps, "TE\n");
-				fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-				fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", (symbol->height + (2 * symbol->border_width)) * scaler, textoffset * scaler, 0.0, symbol->border_width * scaler);
-				fprintf(feps, "%.2f %.2f TB %.2f %.2f TR\n", (symbol->height + (2 * symbol->border_width)) * scaler, textoffset * scaler, (symbol->width + xoffset + xoffset - symbol->border_width) * scaler, symbol->border_width * scaler);
-			}
-			break;
-	}
-
-	/* Put the human readable text at the bottom */
-	if(plot_text && (textdone == 0)) {
-		fprintf(feps, "TE\n");
-		fprintf(feps, "%.2f %.2f %.2f setrgbcolor\n", red_ink, green_ink, blue_ink);
-		fprintf(feps, "matrix currentmatrix\n");
-		fprintf(feps, "/Helvetica findfont\n");
-		fprintf(feps, "%.2f scalefont setfont\n", 8.0 * scaler);
-		textpos = symbol->width / 2.0;
-		fprintf(feps, " 0 0 moveto %.2f %.2f translate 0.00 rotate 0 0 moveto\n", (textpos + xoffset) * scaler, default_text_posn);
-		fprintf(feps, " (%s) stringwidth\n", symbol->text);
-		fprintf(feps, "pop\n");
-		fprintf(feps, "-2 div 0 rmoveto\n");
-		fprintf(feps, " (%s) show\n", symbol->text);
-		fprintf(feps, "setmatrix\n");
-	}
-	fprintf(feps, "\nshowpage\n");
-
-	if(symbol->output_options & BARCODE_STDOUT) {
-		fflush(feps);
-	} else {
-		fclose(feps);
-	}
-
-	if (locale)
-		setlocale(LC_ALL, locale);
-
-	return error_number;
+/* Output Ultracode rectangle colour as PostScript setrgbcolor/setcmykcolor */
+static void ps_put_colour(const int is_rgb, const int colour, struct filemem *const fmp) {
+    const int idx = colour >= 1 && colour <= 8 ? colour - 1 : 6 /*black*/;
+    if (is_rgb) {
+        /* Use RGB colour space */
+        static const char ps_rgbs[8][6] = {
+            "0 1 1", /* 0: Cyan (1) */
+            "0 0 1", /* 1: Blue (2) */
+            "1 0 1", /* 2: Magenta (3) */
+            "1 0 0", /* 3: Red (4) */
+            "1 1 0", /* 4: Yellow (5) */
+            "0 1 0", /* 5: Green (6) */
+            "0 0 0", /* 6: Black (7) */
+            "1 1 1", /* 7: White (8) */
+        };
+        zint_fm_puts(ps_rgbs[idx], fmp);
+        zint_fm_puts(" setrgbcolor\n", fmp);
+    } else {
+        static const char ps_cmyks[8][8] = {
+            "1 0 0 0", /* 0: Cyan (1) */
+            "1 1 0 0", /* 1: Blue (2) */
+            "0 1 0 0", /* 2: Magenta (3) */
+            "0 1 1 0", /* 3: Red (4) */
+            "0 0 1 0", /* 4: Yellow (5) */
+            "1 0 1 0", /* 5: Green (6) */
+            "0 0 0 1", /* 6: Black (7) */
+            "0 0 0 0", /* 7: White (8) */
+        };
+        zint_fm_puts(ps_cmyks[idx], fmp);
+        zint_fm_puts(" setcmykcolor\n", fmp);
+    }
 }
 
+/* Escape special PostScript chars. Assumes valid UTF-8-encoded ISO/IEC 8859-1 */
+static void ps_convert(const unsigned char *string, unsigned char *ps_string) {
+    const unsigned char *s;
+    unsigned char *p = ps_string;
+
+    /* `NOLINT` required due to disconnect between `symbol->text` and vector `string`s which are always <= */
+    /* NOLINTBEGIN(clang-analyzer-security.ArrayBound) clang-tidy-21 false positive */
+    for (s = string; *s; s++) {
+        switch (*s) {
+            case '(':
+            case ')':
+            case '\\':
+                *p++ = '\\';
+                *p++ = *s;
+                break;
+            case 0xC2:
+                *p++ = *++s; /* C2 80-BF -> 80-BF */
+                break;
+            case 0xC3:
+                *p++ = *++s + 0x40; /* C3 80-BF -> C0-FF */
+                break;
+            default:
+                if (*s < 0x80) { /* ASCII - all other Unicode points > U+00FF ignored */
+                    *p++ = *s;
+                }
+                break;
+        }
+    }
+    *p = '\0';
+    /* NOLINTEND(clang-analyzer-security.ArrayBound) */
+}
+
+#ifdef ZINT_TEST /* Wrapper for direct testing */
+INTERNAL void zint_test_ps_convert(const unsigned char *string, unsigned char *ps_string) {
+    ps_convert(string, ps_string);
+}
+#endif
+
+/* Helper to output RGB colour */
+static void ps_put_rgbcolor(const float red, const float green, const float blue,
+                struct filemem *const fmp) {
+    zint_fm_putsf("", 2, red, fmp);
+    zint_fm_putsf(" ", 2, green, fmp);
+    zint_fm_putsf(" ", 2, blue, fmp);
+    zint_fm_puts(" setrgbcolor\n", fmp);
+}
+
+/* Helper to output CMYK colour */
+static void ps_put_cmykcolor(const float cyan, const float magenta, const float yellow, const float black,
+                struct filemem *const fmp) {
+    zint_fm_putsf("", 2, cyan, fmp);
+    zint_fm_putsf(" ", 2, magenta, fmp);
+    zint_fm_putsf(" ", 2, yellow, fmp);
+    zint_fm_putsf(" ", 2, black, fmp);
+    zint_fm_puts(" setcmykcolor\n", fmp);
+}
+
+/* Helper to output rectangle */
+static void ps_put_rect(const struct zint_symbol *symbol, const struct zint_vector_rect *rect, const int type,
+                struct filemem *const fmp) {
+    if (type == 0 || type == 1) {
+        zint_fm_putsf("", 2, rect->height, fmp);
+        zint_fm_putsf(" ", 2, (symbol->vector->height - rect->y) - rect->height, fmp);
+    }
+    zint_fm_putsf(type == 0 ? " " : type == 1 ? " I " : type == 2 ? "I " : "", 2, rect->x, fmp);
+    zint_fm_putsf(" ", 2, rect->width, fmp);
+    zint_fm_puts(" R\n", fmp);
+}
+
+/* Helper to output circle/disc */
+static void ps_put_circle(const struct zint_symbol *symbol, const struct zint_vector_circle *circle,
+                const float radius, const int type, struct filemem *const fmp) {
+    if (circle->width) {
+        zint_fm_putsf("", 2, circle->x, fmp);
+        zint_fm_putsf(" ", 2, symbol->vector->height - circle->y, fmp);
+        zint_fm_putsf(" ", 4, radius, fmp);
+        zint_fm_putsf(" ", 4, circle->width, fmp);
+        zint_fm_puts(" C\n", fmp);
+    } else {
+        if (type == 0 || type == 1) {
+            zint_fm_putsf("", 2, symbol->vector->height - circle->y, fmp);
+            zint_fm_putsf(" ", 4, radius, fmp);
+        }
+        zint_fm_putsf(type == 0 ? " " : type == 1 ? " I " : type == 2 ? "I " : "", 2, circle->x, fmp);
+        zint_fm_puts(" D\n", fmp);
+    }
+}
+
+/* Helper to count rectangles */
+static int ps_count_rectangles(const struct zint_symbol *symbol) {
+    int rectangles = 0;
+    const struct zint_vector_rect *rect;
+
+    for (rect = symbol->vector->rectangles; rect; rect = rect->next) {
+        rectangles++;
+    }
+
+    return rectangles;
+}
+
+INTERNAL int zint_ps_plot(struct zint_symbol *symbol) {
+    struct filemem fm;
+    struct filemem *const fmp = &fm;
+    unsigned char fgred, fggrn, fgblu, bgred, bggrn, bgblu, bgalpha;
+    int fgcyan, fgmagenta, fgyellow, fgblack, bgcyan, bgmagenta, bgyellow, bgblack;
+    float red_ink = 0.0f, green_ink = 0.0f, blue_ink = 0.0f; /* Suppress `-Wmaybe-uninitialized` */
+    float red_paper = 0.0f, green_paper = 0.0f, blue_paper = 0.0f;
+    float cyan_ink = 0.0f, magenta_ink = 0.0f, yellow_ink = 0.0f, black_ink = 0.0f;
+    float cyan_paper = 0.0f, magenta_paper = 0.0f, yellow_paper = 0.0f, black_paper = 0.0f;
+    float previous_diameter;
+    float radius;
+    int colour_rect_flag;
+    int type_latch;
+    int draw_background = 1;
+    struct zint_vector_rect *rect;
+    struct zint_vector_hexagon *hex;
+    struct zint_vector_circle *circle;
+    struct zint_vector_string *string;
+    int i;
+    int ps_len = 0;
+    int iso_latin1 = 0;
+    int have_circles_with_width = 0, have_circles_without_width = 0;
+    const int is_upcean = z_is_upcean(symbol->symbology);
+    const int is_rgb = (symbol->output_options & CMYK_COLOUR) == 0;
+
+    if (symbol->vector == NULL) {
+        return z_errtxt(ZINT_ERROR_INVALID_DATA, symbol, 646, "Vector header NULL");
+    }
+    if (!zint_fm_open(fmp, symbol, "w")) {
+        return ZEXT z_errtxtf(ZINT_ERROR_FILE_ACCESS, symbol, 645, "Could not open EPS output file (%1$d: %2$s)",
+                                fmp->err, strerror(fmp->err));
+    }
+
+    if (is_rgb) {
+        (void) zint_out_colour_get_rgb(symbol->fgcolour, &fgred, &fggrn, &fgblu, NULL /*alpha*/);
+        red_ink = fgred / 255.0f;
+        green_ink = fggrn / 255.0f;
+        blue_ink = fgblu / 255.0f;
+
+        (void) zint_out_colour_get_rgb(symbol->bgcolour, &bgred, &bggrn, &bgblu, &bgalpha);
+        red_paper = bgred / 255.0f;
+        green_paper = bggrn / 255.0f;
+        blue_paper = bgblu / 255.0f;
+    } else {
+        (void) zint_out_colour_get_cmyk(symbol->fgcolour, &fgcyan, &fgmagenta, &fgyellow, &fgblack,
+                                        NULL /*rgb_alpha*/);
+        cyan_ink = fgcyan / 100.0f;
+        magenta_ink = fgmagenta / 100.0f;
+        yellow_ink = fgyellow / 100.0f;
+        black_ink = fgblack / 100.0f;
+
+        (void) zint_out_colour_get_cmyk(symbol->bgcolour, &bgcyan, &bgmagenta, &bgyellow, &bgblack, &bgalpha);
+        cyan_paper = bgcyan / 100.0f;
+        magenta_paper = bgmagenta / 100.0f;
+        yellow_paper = bgyellow / 100.0f;
+        black_paper = bgblack / 100.0f;
+    }
+    if (bgalpha == 0) {
+        draw_background = 0;
+    }
+
+    for (i = 0; i < symbol->text_length; i++) {
+        switch (symbol->text[i]) {
+            case '(':
+            case ')':
+            case '\\':
+                ps_len += 2;
+                break;
+            default:
+                if (!iso_latin1 && symbol->text[i] >= 0x80) {
+                    iso_latin1 = 1;
+                }
+                ps_len++; /* Will overcount 2 byte UTF-8 chars */
+                break;
+        }
+    }
+
+    /* Check for circle widths */
+    for (circle = symbol->vector->circles; circle; circle = circle->next) {
+        if (circle->width) {
+            have_circles_with_width = 1;
+            if (have_circles_without_width) {
+                break;
+            }
+        } else {
+            have_circles_without_width = 1;
+            if (have_circles_with_width) {
+                break;
+            }
+        }
+    }
+
+    /* Start writing the header */
+    zint_fm_puts("%!PS-Adobe-3.0 EPSF-3.0\n"
+                "%%Creator: Zint ", fmp);
+#if ZINT_VERSION_BUILD
+    zint_fm_printf(fmp, "%d.%d.%d.%d\n", ZINT_VERSION_MAJOR, ZINT_VERSION_MINOR, ZINT_VERSION_RELEASE,
+                    ZINT_VERSION_BUILD);
+#else
+    zint_fm_printf(fmp, "%d.%d.%d\n", ZINT_VERSION_MAJOR, ZINT_VERSION_MINOR, ZINT_VERSION_RELEASE);
+#endif
+    zint_fm_puts("%%Title: Zint Generated Symbol\n"
+                "%%Pages: 0\n"
+                "%%BoundingBox: 0 0 ", fmp);
+    zint_fm_printf(fmp, "%d %d\n", (int) ceilf(symbol->vector->width), (int) ceilf(symbol->vector->height));
+    zint_fm_puts("%%EndComments\n", fmp);
+
+    /* Definitions */
+    if (have_circles_without_width) {
+        /* Disc: y radius x D */
+        zint_fm_puts("/D { newpath 3 1 roll 0 360 arc fill } bind def\n", fmp);
+    }
+    if (have_circles_with_width) {
+        /* Circle (ring): x y radius width C (adapted from BWIPP renmaxicode.ps) */
+        zint_fm_puts("/C { newpath 4 1 roll 3 copy 0 360 arc closepath 4 -1 roll add 360 0 arcn closepath fill }"
+                    " bind def\n", fmp);
+    }
+    if (symbol->vector->hexagons) {
+        /* Hexagon: radius half_radius half_sqrt3_radius x y */
+        if (symbol->vector->hexagons->rotation == 0 || symbol->vector->hexagons->rotation == 180) {
+            zint_fm_puts("/H { newpath moveto 2 copy exch neg exch rmoveto 2 index neg 0 exch rlineto"
+                        " 2 copy neg rlineto 2 copy rlineto 3 -1 roll 0 exch rlineto exch neg exch rlineto"
+                        " closepath fill } bind def\n", fmp);
+        } else {
+            zint_fm_puts("/H { newpath moveto 2 copy neg exch neg rmoveto 2 index 0 rlineto 2 copy exch rlineto"
+                        " 2 copy neg exch rlineto 3 -1 roll neg 0 rlineto neg exch neg rlineto"
+                        " closepath fill } bind def\n", fmp);
+        }
+        /* Copy r hr hsr for repeat use without having to specify them subsequently */
+        zint_fm_puts("/J { 3 copy } bind def\n", fmp);
+        /* TODO: Save repeating x also */
+    }
+    if (symbol->vector->rectangles || draw_background) {
+        /* Rectangle: h y x w */
+        zint_fm_puts("/R { newpath 4 1 roll exch moveto 1 index 0 rlineto 0 exch rlineto neg 0 rlineto"
+                    " closepath fill } bind def\n", fmp);
+    }
+    if (symbol->vector->rectangles || have_circles_without_width) {
+        /* Copy h y (rect) or y r (disc) for repeat use without having to specify them subsequently */
+        zint_fm_puts("/I { 2 copy } bind def\n", fmp);
+    }
+
+    /* Now the actual representation */
+
+    /* Background */
+    if (draw_background) {
+        if (is_rgb) {
+            ps_put_rgbcolor(red_paper, green_paper, blue_paper, fmp);
+        } else {
+            ps_put_cmykcolor(cyan_paper, magenta_paper, yellow_paper, black_paper, fmp);
+        }
+
+        zint_fm_putsf("", 2, symbol->vector->height, fmp);
+        zint_fm_putsf(" 0 0 ", 2, symbol->vector->width, fmp); /* y x w */
+        zint_fm_puts(" R\n", fmp);
+    }
+
+    if (symbol->symbology != BARCODE_ULTRA) {
+        if (is_rgb) {
+            ps_put_rgbcolor(red_ink, green_ink, blue_ink, fmp);
+        } else {
+            ps_put_cmykcolor(cyan_ink, magenta_ink, yellow_ink, black_ink, fmp);
+        }
+    }
+
+    /* Rectangles */
+    if (symbol->symbology == BARCODE_ULTRA) {
+        /* Group rectangles by colour */
+        const int rect_cnt = ps_count_rectangles(symbol);
+        struct zint_vector_rect **ultra_rects
+            = (struct zint_vector_rect **) z_alloca(sizeof(struct zint_vector_rect *) * (rect_cnt ? rect_cnt : 1));
+        int u_i = 0;
+        for (i = 0; i <= 8; i++) {
+            for (rect = symbol->vector->rectangles; rect; rect = rect->next) {
+                if ((i == 0 && rect->colour == -1) || rect->colour == i) {
+                    assert(u_i < rect_cnt); /* Suppress clang-tidy-21 clang-analyzer-security.ArrayBound */
+                    ultra_rects[u_i++] = rect;
+                }
+            }
+        }
+        assert(u_i == ps_count_rectangles(symbol));
+
+        colour_rect_flag = 0;
+        type_latch = 0;
+        for (i = 0; i < u_i; i++) {
+            rect = ultra_rects[i];
+            if (i == 0 || rect->colour != ultra_rects[i - 1]->colour) {
+                if (rect->colour == -1) {
+                    if (colour_rect_flag == 0) {
+                        /* Set foreground colour */
+                        if (is_rgb) {
+                            ps_put_rgbcolor(red_ink, green_ink, blue_ink, fmp);
+                        } else {
+                            ps_put_cmykcolor(cyan_ink, magenta_ink, yellow_ink, black_ink, fmp);
+                        }
+                        colour_rect_flag = 1;
+                    }
+                } else {
+                    /* Set new colour */
+                    ps_put_colour(is_rgb, rect->colour, fmp);
+                }
+            }
+            if (i + 1 < u_i && rect->height == ultra_rects[i + 1]->height && rect->y == ultra_rects[i + 1]->y) {
+                ps_put_rect(symbol, rect, type_latch ? 2 : 1, fmp);
+                type_latch = 1;
+            } else {
+                ps_put_rect(symbol, rect, type_latch ? 3 : 0, fmp);
+                type_latch = 0;
+            }
+        }
+    } else {
+        type_latch = 0;
+        for (rect = symbol->vector->rectangles; rect; rect = rect->next) {
+            if (rect->next && rect->height == rect->next->height && rect->y == rect->next->y) {
+                ps_put_rect(symbol, rect, type_latch ? 2 : 1, fmp);
+                type_latch = 1;
+            } else {
+                ps_put_rect(symbol, rect, type_latch ? 3 : 0, fmp);
+                type_latch = 0;
+            }
+        }
+    }
+
+    /* Hexagons */
+    previous_diameter = 0.0f;
+    for (hex = symbol->vector->hexagons; hex; hex = hex->next) {
+        float hy = symbol->vector->height - hex->y;
+        if (previous_diameter != hex->diameter) {
+            previous_diameter = hex->diameter;
+            zint_fm_putsf("", 4, 0.5f * previous_diameter /*radius*/, fmp);
+            zint_fm_putsf(" ", 4, 0.43301270189221932338f * previous_diameter /*half_sqrt3_radius*/, fmp);
+            zint_fm_putsf(" ", 4, 0.25f * previous_diameter /*half_radius*/, fmp);
+            zint_fm_putc('\n', fmp);
+        }
+        if (hex->next) {
+            zint_fm_putsf("J ", 2, hex->x, fmp);
+        } else {
+            zint_fm_putsf("", 2, hex->x, fmp);
+        }
+        zint_fm_putsf(" ", 2, hy, fmp);
+        zint_fm_puts(" H\n", fmp);
+    }
+
+    /* Circles */
+    previous_diameter = radius = 0.0f;
+    type_latch = 0;
+    for (circle = symbol->vector->circles; circle; circle = circle->next) {
+        if (previous_diameter != circle->diameter - circle->width) {
+            previous_diameter = circle->diameter - circle->width;
+            radius = 0.5f * previous_diameter;
+        }
+        if (circle->colour) { /* Legacy - no longer used */
+            /* A 'white' circle */
+            if (is_rgb) {
+                ps_put_rgbcolor(red_paper, green_paper, blue_paper, fmp);
+            } else {
+                ps_put_cmykcolor(cyan_paper, magenta_paper, yellow_paper, black_paper, fmp);
+            }
+            ps_put_circle(symbol, circle, radius, 0 /*type*/, fmp);
+            if (circle->next) {
+                if (is_rgb) {
+                    ps_put_rgbcolor(red_ink, green_ink, blue_ink, fmp);
+                } else {
+                    ps_put_cmykcolor(cyan_ink, magenta_ink, yellow_ink, black_ink, fmp);
+                }
+            }
+        } else {
+            /* A 'black' circle */
+            if (circle->next && circle->y == circle->next->y && circle->diameter == circle->next->diameter) {
+                ps_put_circle(symbol, circle, radius, type_latch ? 2 : 1, fmp);
+                type_latch = 1;
+            } else {
+                ps_put_circle(symbol, circle, radius, type_latch ? 3 : 0, fmp);
+                type_latch = 0;
+            }
+        }
+    }
+
+    /* Text */
+
+    string = symbol->vector->strings;
+
+    if (string) {
+        float previous_fsize = 0.0f;
+        const char *font;
+        unsigned char *ps_string = (unsigned char *) z_alloca(ps_len + 1);
+
+        if ((symbol->output_options & BOLD_TEXT) && !is_upcean) {
+            font = "Helvetica-Bold";
+        } else {
+            font = "Helvetica";
+        }
+        if (iso_latin1) {
+            /* Change encoding to ISO 8859-1, see Postscript Language Reference Manual 2nd Edition Example 5.6 */
+            zint_fm_printf(fmp, "/%s findfont\n", font);
+            zint_fm_puts("dup length dict begin\n"
+                          "{1 index /FID ne {def} {pop pop} ifelse} forall\n"
+                          "/Encoding ISOLatin1Encoding def\n"
+                          "currentdict\n"
+                          "end\n"
+                          "/Helvetica-ISOLatin1 exch definefont pop\n", fmp);
+            font = "Helvetica-ISOLatin1";
+        }
+        do {
+            ps_convert(string->text, ps_string);
+            if (string->fsize != previous_fsize) {
+                zint_fm_printf(fmp, "/%s findfont", font);
+                /* Compensate for Helvetica being smaller than Zint's OCR-B */
+                zint_fm_putsf( " ", 2, is_upcean ? string->fsize * 1.07f : string->fsize, fmp);
+                zint_fm_puts(" scalefont setfont\n", fmp);
+                previous_fsize = string->fsize;
+            }
+            /* Unhack the guard whitespace `gws_left_fudge`/`gws_right_fudge` hack */
+            if (is_upcean && string->halign == 1 && string->text[0] == '<') {
+                const float gws_left_fudge = symbol->scale < 0.1f ? 0.1f : symbol->scale; /* 0.5 * 2 * scale */
+                zint_fm_putsf(" ", 2, string->x + gws_left_fudge, fmp);
+            } else if (is_upcean && string->halign == 2 && string->text[0] == '>') {
+                const float gws_right_fudge = symbol->scale < 0.1f ? 0.1f : symbol->scale; /* 0.5 * 2 * scale */
+                zint_fm_putsf(" ", 2, string->x - gws_right_fudge, fmp);
+            } else {
+                zint_fm_putsf(" ", 2, string->x, fmp);
+            }
+            zint_fm_putsf(" ", 2, symbol->vector->height - string->y, fmp);
+            zint_fm_puts(" moveto\n", fmp);
+            if (string->rotation != 0) {
+                zint_fm_puts(" gsave\n", fmp);
+                zint_fm_printf(fmp, " %d rotate\n", 360 - string->rotation);
+            }
+            if (string->halign == 0 || string->halign == 2) { /* Need width for middle or right align */
+                zint_fm_printf(fmp, " (%s) stringwidth pop" /* Returns "width height" - discard "height" */
+                                " %s 0 rmoveto\n", ps_string, string->halign == 2 ? "neg" : "-2 div");
+            }
+            zint_fm_printf(fmp, " (%s) show\n", ps_string);
+            if (string->rotation != 0) {
+                zint_fm_puts(" grestore\n", fmp);
+            }
+            string = string->next;
+        } while (string);
+    }
+
+    if (zint_fm_error(fmp)) {
+        ZEXT z_errtxtf(0, symbol, 647, "Incomplete write of EPS output (%1$d: %2$s)", fmp->err, strerror(fmp->err));
+        (void) zint_fm_close(fmp, symbol);
+        return ZINT_ERROR_FILE_WRITE;
+    }
+
+    if (!zint_fm_close(fmp, symbol)) {
+        return ZEXT z_errtxtf(ZINT_ERROR_FILE_WRITE, symbol, 649, "Failure on closing EPS output file (%1$d: %2$s)",
+                                fmp->err, strerror(fmp->err));
+    }
+
+    return 0;
+}
+
+/* vim: set ts=4 sw=4 et : */

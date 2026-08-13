@@ -6,11 +6,13 @@ and exposes it as a single command, ::tzint::Encode, that hands the result back
 in a Tcl variable or writes it to a file. No Tk is needed; the package produces
 data, not windows.
 
-Over 80 symbologies are supported, among them Code 128, Code 39, EAN and UPC,
-ITF, QR Code, Micro QR, Data Matrix, PDF417, MicroPDF417, Aztec Code, MaxiCode,
-GS1 DataBar, Code 16k, Code One, Grid Matrix, the postal codes of several
-countries and the composite symbologies. The command "::tzint::Encode
-symbologies" lists the names this build accepts.
+The embedded backend is libzint 2.16.0, which reaches over 100 symbologies.
+Among them are Code 128, Code 39, EAN and UPC, ITF, QR Code, Micro QR, rMQR,
+Data Matrix, PDF417, MicroPDF417, Aztec Code, MaxiCode, DotCode, Han Xin,
+Ultracode, GS1 DataBar, Code 16k, Code One, Grid Matrix, DX Film Edge, the
+postal codes of several countries including Royal Mail Mailmark, and the
+composite symbologies. The command "::tzint::Encode symbologies" lists the
+names this build accepts.
 
 This package is built with the Tcl Extension Architecture (TEA); see
 http://www.tcl.tk/doc/tea/ for what that means for the build system.
@@ -101,6 +103,10 @@ USING
 	# straight to a file, the extension picks the format
 	::tzint::Encode file symbol.png "Hello Tcl" -barcode code128
 
+	# colours, as RGB or as RGBA for a translucent one
+	::tzint::Encode file symbol.png "Hello Tcl" -barcode code128 \
+	    -fg 000000 -bg ffffff00
+
 Encode returns 0 when libzint reports no problem, and a non-zero status
 otherwise. The -stat option collects the details:
 
@@ -110,6 +116,24 @@ otherwise. The -stat option collects the details:
 Options that tzint itself rejects, such as an unknown symbology or a value out
 of range, raise a Tcl error instead.
 
+The file command writes the raster formats BMP, GIF, PCX, PNG and TIF and the
+vector formats EMF, EPS and SVG, chosen by the extension of the file name. A
+TXT extension writes a hex dump of the encoded data; for a matrix of modules
+use the bits command.
+
+The resolution stored in the file is set with -dpi, or with -dpmm in the dots
+per millimetre libzint uses. It reaches BMP, EMF, PCX, PNG and TIF; without it
+the file carries no resolution.
+
+	::tzint::Encode file symbol.png "Hello Tcl" -barcode code128 -dpi 300
+
+For vector output tzint draws one unit per module, the size it has always
+produced, while libzint itself draws two. The -vectorscale option selects
+between the two:
+
+	::tzint::Encode svg data "Hello Tcl" -barcode code128                    ;# 1 unit
+	::tzint::Encode svg data "Hello Tcl" -barcode code128 -vectorscale zint  ;# 2 units
+
 Two further commands describe the build of the package itself:
 
 	::tzint::manifest	a dictionary with version, date, check-in,
@@ -118,8 +142,9 @@ Two further commands describe the build of the package itself:
 				::tcl::build-info. Only present when the
 				interpreter provides that command, from Tcl 8.7 on.
 
-The file command is described in doc/tzint.unsupported rather than in the
-manual page.
+Every command and option is described in the manual page, doc/tzint.n. The
+older doc/tzint.unsupported still carries an earlier description of the file
+command and is superseded by it.
 
 
 TESTING
@@ -128,6 +153,9 @@ TESTING
 	$ make test
 
 runs the tcltest suite in the tests directory against the library just built.
+tests/info.test covers the manifest commands, tests/encode.test the encoding
+itself: every symbology in the table, all four output commands, the file
+formats, the options and the errors.
 
 
 DOCUMENTATION
@@ -135,7 +163,8 @@ DOCUMENTATION
 
 doc/tzint.n		manual page, describing every command and option
 doc/tzintsample.tcl	a runnable example
-doc/tzint.unsupported	the parts deliberately kept out of the manual page
+doc/tzint.unsupported	an earlier description of the file command, kept for
+			reference and superseded by the manual page
 
 The libzint manual documents the symbologies themselves and the meaning of
 their options:

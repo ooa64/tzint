@@ -73,13 +73,15 @@ TEA_SETUP_COMPILER
 
 TZINT_PATH_PNG
 
-AC_DEFINE(ZINT_VERSION, "2.4.4")
-
-TEA_ADD_SOURCES([common.c render.c png.c library.c ps.c large.c reedsol.c gs1.c svg.c])
-TEA_ADD_SOURCES([code.c code128.c 2of5.c upcean.c telepen.c medical.c plessey.c rss.c])
-TEA_ADD_SOURCES([postal.c auspost.c imail.c])
-TEA_ADD_SOURCES([code16k.c dmatrix.c pdf417.c qr.c maxicode.c composite.c aztec.c code49.c code1.c gridmtx.c])
-TEA_ADD_SOURCES([tps.c tsvg.c tzint.c])
+# zint backend 2.16.0, file groups as per its own backend/CMakeLists.txt
+TEA_ADD_SOURCES([common.c eci.c filemem.c general_field.c gs1.c large.c library.c reedsol.c])
+TEA_ADD_SOURCES([2of5.c 2of5inter.c 2of5inter_based.c bc412.c channel.c codabar.c code.c code11.c])
+TEA_ADD_SOURCES([code128.c code128_based.c dxfilmedge.c medical.c plessey.c rss.c telepen.c upcean.c])
+TEA_ADD_SOURCES([auspost.c imail.c mailmark.c postal.c])
+TEA_ADD_SOURCES([aztec.c codablock.c code1.c code16k.c code49.c composite.c dmatrix.c dotcode.c])
+TEA_ADD_SOURCES([gridmtx.c hanxin.c maxicode.c pdf417.c qr.c ultra.c])
+TEA_ADD_SOURCES([bmp.c emf.c gif.c output.c pcx.c png.c ps.c raster.c svg.c tif.c vector.c])
+TEA_ADD_SOURCES([tzint.c])
 TEA_ADD_HEADERS([])
 TEA_ADD_INCLUDES([])
 TEA_ADD_LIBS([-lz -lm])

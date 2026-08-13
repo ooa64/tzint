@@ -186,39 +186,62 @@ PROJECT = tzint
 VERSION         = $(DOTVERSION:.=)
 STUBPREFIX      = $(PROJECT)stub
 
+# zint backend 2.16.0, file groups as per its own backend/CMakeLists.txt;
+# keep in sync with TEA_ADD_SOURCES in configure.ac
 DLLOBJS = \
 	$(TMP_DIR)\common.obj \
-	$(TMP_DIR)\render.obj \
-	$(TMP_DIR)\png.obj \
-	$(TMP_DIR)\library.obj \
-	$(TMP_DIR)\ps.obj \
-	$(TMP_DIR)\large.obj \
-	$(TMP_DIR)\reedsol.obj \
+	$(TMP_DIR)\eci.obj \
+	$(TMP_DIR)\filemem.obj \
+	$(TMP_DIR)\general_field.obj \
 	$(TMP_DIR)\gs1.obj \
-	$(TMP_DIR)\svg.obj \
-	$(TMP_DIR)\code.obj \
-	$(TMP_DIR)\code128.obj \
+	$(TMP_DIR)\large.obj \
+	$(TMP_DIR)\library.obj \
+	$(TMP_DIR)\reedsol.obj \
 	$(TMP_DIR)\2of5.obj \
-	$(TMP_DIR)\upcean.obj \
-	$(TMP_DIR)\telepen.obj \
+	$(TMP_DIR)\2of5inter.obj \
+	$(TMP_DIR)\2of5inter_based.obj \
+	$(TMP_DIR)\bc412.obj \
+	$(TMP_DIR)\channel.obj \
+	$(TMP_DIR)\codabar.obj \
+	$(TMP_DIR)\code.obj \
+	$(TMP_DIR)\code11.obj \
+	$(TMP_DIR)\code128.obj \
+	$(TMP_DIR)\code128_based.obj \
+	$(TMP_DIR)\dxfilmedge.obj \
 	$(TMP_DIR)\medical.obj \
 	$(TMP_DIR)\plessey.obj \
 	$(TMP_DIR)\rss.obj \
-	$(TMP_DIR)\postal.obj \
+	$(TMP_DIR)\telepen.obj \
+	$(TMP_DIR)\upcean.obj \
 	$(TMP_DIR)\auspost.obj \
 	$(TMP_DIR)\imail.obj \
+	$(TMP_DIR)\mailmark.obj \
+	$(TMP_DIR)\postal.obj \
+	$(TMP_DIR)\aztec.obj \
+	$(TMP_DIR)\codablock.obj \
+	$(TMP_DIR)\code1.obj \
 	$(TMP_DIR)\code16k.obj \
+	$(TMP_DIR)\code49.obj \
+	$(TMP_DIR)\composite.obj \
 	$(TMP_DIR)\dmatrix.obj \
+	$(TMP_DIR)\dotcode.obj \
+	$(TMP_DIR)\gridmtx.obj \
+	$(TMP_DIR)\hanxin.obj \
+	$(TMP_DIR)\maxicode.obj \
 	$(TMP_DIR)\pdf417.obj \
 	$(TMP_DIR)\qr.obj \
-	$(TMP_DIR)\maxicode.obj \
-	$(TMP_DIR)\composite.obj \
-	$(TMP_DIR)\aztec.obj \
-	$(TMP_DIR)\code49.obj \
-	$(TMP_DIR)\code1.obj \
-	$(TMP_DIR)\gridmtx.obj \
-	$(TMP_DIR)\tps.obj \
-	$(TMP_DIR)\tsvg.obj \
+	$(TMP_DIR)\ultra.obj \
+	$(TMP_DIR)\bmp.obj \
+	$(TMP_DIR)\emf.obj \
+	$(TMP_DIR)\gif.obj \
+	$(TMP_DIR)\output.obj \
+	$(TMP_DIR)\pcx.obj \
+	$(TMP_DIR)\png.obj \
+	$(TMP_DIR)\ps.obj \
+	$(TMP_DIR)\raster.obj \
+	$(TMP_DIR)\svg.obj \
+	$(TMP_DIR)\tif.obj \
+	$(TMP_DIR)\vector.obj \
 	$(TMP_DIR)\tzint.obj \
 !if !$(STATIC_BUILD)
 	$(TMP_DIR)\tzint.res
