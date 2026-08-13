@@ -325,7 +325,10 @@ static void Bits(Tcl_Interp *interp, Tcl_Obj *list, char onchar, char offchar, s
 
 
 static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[]) {
-  int err = 0, i, index, cmd, rc, ival, angle = 0, stat = -1, vscaleCompat = 1;
+  // zint returns 1 to 4 for a warning and ZINT_ERROR (5) upwards for a failure;
+  // on a warning the symbol has been produced and the output is handed over,
+  // with the status as the result and the message in -stat
+  int err = 0, i, index, cmd, rc, prc, ival, angle = 0, stat = -1, vscaleCompat = 1;
   Tcl_Size len;
   struct zint_symbol *zsymbol;
   char *cp, onchar = '1', offchar = '0';
@@ -356,14 +359,14 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     "-fg", "-bg", "-foreground", "-background", "-cols", "-vers", "-rotate", "-security",
     "-mode", "-primary", "-scale", "-format", "-notext", "-square", "-init", "-smalltext",
     "-onchar", "-offchar", "-opt1", "-opt2", "-opt3", "-stat", "-vectorscale",
-    "-dpi", "-dpmm", NULL
+    "-dpi", "-dpmm", "-eci", NULL
   };
   enum options {
     TZINT_BARCODE, TZINT_SYMBOLOGY, TZINT_HEIGHT, TZINT_WHITESPACE, TZINT_BIND, TZINT_BOX, TZINT_BORDER,
     TZINT_FG, TZINT_BG, TZINT_FOREGROUND, TZINT_BACKGROUND, TZINT_COLS, TZINT_VERS, TZINT_ROTATE, TZINT_SECURITY,
     TZINT_MODE, TZINT_PRIMARY, TZINT_SCALE, TZINT_FORMAT, TZINT_NO_TEXT, TZINT_SQUARE, TZINT_INIT, TZINT_SMALLTEXT,
     TZINT_ONCHAR, TZINT_OFFCHAR, TZINT_OPT_1, TZINT_OPT_2, TZINT_OPT_3, TZINT_STAT, TZINT_VECTORSCALE,
-    TZINT_DPI, TZINT_DPMM
+    TZINT_DPI, TZINT_DPMM, TZINT_ECI
   };
   static const char *rotate[] = {
     "0", "90", "180", "270", NULL
@@ -725,6 +728,21 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
         stat = i + 1;
 	break;
 
+      // zint checks the value itself and names the codes it excludes; this
+      // only keeps the outer bounds so a typo does not reach the encoder
+      case TZINT_ECI:
+	if (Tcl_GetIntFromObj(interp, objv[i+1], &ival) == TCL_OK) {
+	  if (ival < 0 || ival > 999999) {
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj("eci out of range", -1));
+	    err = 1;
+	  } else {
+	    zsymbol->eci = ival;
+	  }
+	} else {
+	  err = 1;
+	}
+	break;
+
       // zint stores the resolution as dots per mm and writes it to BMP, EMF,
       // PCX, PNG and TIF; 0 leaves the file without a resolution. Its own upper
       // bound is 1000 dpmm, which is 25400 dpi.
@@ -793,7 +811,7 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     }
     cp = Tcl_GetStringFromObj(objv[3], &len);
     rc = ZBarcode_Encode(zsymbol, (unsigned char *)cp, len);
-    if (rc != 0) {
+    if (rc >= ZINT_ERROR) {
       goto cleanup;
     }
   } else
@@ -808,13 +826,13 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     }
     cp = Tcl_GetStringFromObj(objv[3], &len);
     rc = ZBarcode_Encode_and_Print(zsymbol, (unsigned char *)cp, len, angle);
-    if (rc != 0) {
+    if (rc >= ZINT_ERROR) {
       goto cleanup;
     }
   } else {
     cp = Tcl_GetStringFromObj(objv[3], &len);
     rc = ZBarcode_Encode_and_Buffer(zsymbol, (unsigned char *)cp, len, angle);
-    if (rc != 0) {
+    if (rc >= ZINT_ERROR) {
       goto cleanup;
     }
   }
@@ -822,8 +840,11 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
   switch ((enum command) cmd) {
 #ifndef NO_CMD_FILE
     case TZINT_CMD_FILE:
-      rc = ZBarcode_Print(zsymbol, angle);
-      if (rc != 0) {
+      prc = ZBarcode_Print(zsymbol, angle);
+      if (prc > rc) {
+	rc = prc;   // report the more serious of encoding and writing
+      }
+      if (rc >= ZINT_ERROR) {
 	goto cleanup;
       }
       break;

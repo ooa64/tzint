@@ -107,14 +107,25 @@ USING
 	::tzint::Encode file symbol.png "Hello Tcl" -barcode code128 \
 	    -fg 000000 -bg ffffff00
 
-Encode returns 0 when libzint reports no problem, and a non-zero status
-otherwise. The -stat option collects the details:
+Encode returns the status libzint reports: 0 when it has nothing to remark, 1
+to 4 for a warning, 5 and above for a failure. A warning still delivers the
+symbol, so drawing the result works whether or not the value is looked at; a
+failure delivers nothing. The -stat option collects the details:
 
 	::tzint::Encode bits data "Hello Tcl" -barcode code128 -stat info
 	# info holds: zint, error, rows, columns, width, height
 
 Options that tzint itself rejects, such as an unknown symbology or a value out
 of range, raise a Tcl error instead.
+
+Input outside the character set a symbology uses by default makes libzint
+choose an Extended Channel Interpretation itself and answer with a warning.
+-eci picks one instead; 26 is UTF-8, 3 is ISO 8859-1. This is what an EPC QR
+code for a bank transfer needs, whose data declares its own encoding:
+
+	set epc "BCD\n002\n1\nSCT\nBANKDEFFXXX\nMüller GmbH\n\
+	    DE89370400440532013000\nEUR12.34\n\n\nRechnung über 12,34 €"
+	::tzint::Encode file giro.svg $epc -barcode qrcode -security 2 -eci 26
 
 The file command writes the raster formats BMP, GIF, PCX, PNG and TIF and the
 vector formats EMF, EPS and SVG, chosen by the extension of the file name. A
