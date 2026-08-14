@@ -1,13 +1,13 @@
 '\"
 .so man.macros
-.TH tzint n 1.2 "Tcl-Extensions"
+.TH tzint n 1.3 "Tcl-Extensions"
 .HS tzint tcl
 .BS
 '\" Note:  do not modify the .SH NAME line immediately below!
 .SH NAME
 tzint \- tcl package for libzint barcode encoding library
 .SH SYNOPSIS
-\fBpackage require tzint\fR ?\fB1.2\fR?
+\fBpackage require tzint\fR ?\fB1.3\fR?
 .sp
 \fBtzint::Encode\fR \fBversion\fR
 .br

@@ -1,17 +1,17 @@
-C merged\sfrom\stoward-tclpdf
-D 2026-08-13T22:58:05.039
+C Raise\sthe\spackage\sversion\sto\s1.3\sand\sfix\sthe\sPNG\sdetection\n\n-\sconfigure.ac,\sdoc/tzint.n\s-\spackage\sversion\sraised\sto\s1.3,\sconfigure\sregenerated\n-\saclocal.m4\s-\spkg-config\sis\sasked\sbefore\sthe\sdirectory\slist,\sfor\sthe\sheader\sas\swell\sas\sthe\slibrary,\sand\saarch64-linux-gnu\sjoins\sthat\slist\n-\saclocal.m4\s-\sboth\smessages\snow\sname\sthe\sdirectories\ssearched,\sand\sthe\sone\sfor\sthe\sheader\spoints\sat\s"apt\sinstall\slibpng-dev",\swhich\sis\swhat\sa\sDebian\s13\sbuild\swas\smissing\n-\saclocal.m4\s-\s--enable-filecmd=no\salso\sdefines\sZINT_NO_PNG\snow,\sso\sa\sbuild\swithout\slibpng\sgets\sthrough;\sit\sdid\snot\sbefore,\spng.c\swas\scompiled\sall\sthe\ssame\sand\sstopped\sat\sthe\smissing\sheader\n-\spng-configure\s-\sremoved,\snothing\sever\sincluded\sit\n-\swin/makefile.vc\s-\sreads\sconfigure.ac\sinstead\sof\sa\sconfigure.in\sthat\sdoes\snot\sexist,\sand\sno\slonger\spasses\sZINT_VERSION,\swhich\stzint.c\sderives\sfrom\szintconfig.h\n-\sBuilt\sand\stested\son\smacOS\swith\sTcl\s8.6.18\sand\s9.0.4,\sand\sthe\ssuite\spasses\son\sDebian\s13;\sthe\spkg-config\sbranch\sis\suntested\shere,\sthis\smachine\shas\snone
+D 2026-08-14T04:40:06.077
 F .gitattributes 733e36ea315cad1b0e3225455af021ee6fa653befa2f404373d26200b9918998
 F LICENSE.zint 7b6f5d696075597acb6e81020ff95339a3438dc1b298d3208877b3bac22ffe39
 F Makefile.in a51cf4515337c053a3fb340af124e9ae5d40369219e11580cf2a1a6170fab09a
 F README 9bceba4f39f81679c3a26f0e58c1d64f9be9b1c2a2751e89e87c22e046c1118c
-F aclocal.m4 cfdb12beb9b49ab9ac69f5e021456361d203e735f338d4ce576ea650bfd0df39
+F aclocal.m4 9a0d5abd6f90fb8ebf448f75175de07fbdf53ab89345851e6e01ceff15983317
 F code128.png e8346bfc8be67012dd55eec5f06dcae271b1877226dd091845398a0e9b7717f6
 F code128i.png 8117d212811cb83d0b9fadbcf9a161e72174dc04ec0466dbf857c4efb9c52630
 F composite_symbol.png 335ed5eaa7fafbe8d783bb8a51249d86235dd842f12d8691e0d1a077451b7ece
-F configure 9eabb1cc3f9bbe8be469ddc548204c17af2724e5d309b2e01428ffbc87b07ae5 x
-F configure.ac 3e68e96e0278f77d408699d85218b2650633ce11dc557780a2bb868f6e0f527f
+F configure 127b21fcafeb136856e1385488a6f5a4bdf2369a7c50bc48226fb37c09fef61d x
+F configure.ac b07f0b2922067caf31d5d8b023e681b67ebb4ee9fbac05b294090a0e8b6577b0
 F doc/man.macros 707b0a41ace7c6bbcb5742454971e142d5965df1986074f4c679eefff1cca6fa
-F doc/tzint.n 39d4d2122cc5963c60b82020eecbb99bd775fb86de75dd6970db5a02748646a1
+F doc/tzint.n 23b566a4e74fe39c4dc76f6e96e2cffe65c828e7fd3acbe0d4486933348da0ee
 F doc/tzint.unsupported 6f3b8fdb5b33f71c91453cc0f80f35d0b3d2553c74edfa295dd1977451d2e193
 F doc/tzintsample.tcl 368d209723669669f1f6fd51fb1af5a7f76be0b579f07db2053393296824f3fa x
 F generic/2of5.c a3682bf45562659ab0a7914fb8bd7dab0b360fbe8a0514d111b66bd750e00a4e
@@ -119,7 +119,6 @@ F generic/zint.h d3dbd150a52a67ba1fed2aab6c8ef102e266040d1a157ccf3ebd553154e24c9
 F generic/zintconfig.h 8bf1507b4b3aad5157ba91aa7dd23e368d03ba3e912079d54eed2c1f374a3d9d
 F license.terms 22ec8d0fc723d5846d3d651681406f07d755b33f5b21431fa437976b90da7df5
 F pkgIndex.tcl.in 43e62802f80f31281a4583d5a91bca0130506b9371c159e8891f85a45ab1f0bb
-F png-configure fc63ed9c9bf034ad27bbb816f610a04ef3b1477c93d7c723a13d2404ae0ce63d
 F qr_symbol.png 3d885a5dfc1d854b656697f21636fc004ee7ff55572b6fe087587df996c066eb
 F tclconfig/ChangeLog 302050e01fd73e2cdb05bea76d1025ac0a230d4795915c0160344c9ccfa4bcd4
 F tclconfig/README.txt 9d4dc80a81772427bb153a9a7601e7b6cc95845dbd67c455772643a4df6ba147
@@ -130,13 +129,12 @@ F tests/all.tcl 88b20641d1597a01db968396a12b251130c7e609ce7866de9242c14992f9718e
 F tests/encode.test 4dd6073784d5fb2ecaeb6f228d08b976f3500edf3441e6d72d801aa3c0fd911a
 F tests/info.test 5b7118e352b7ecb208460363a2360449c4c9805756b40e36e84fd44f884c295e
 F tools/mkversion.tcl b4d936fc6e55d794e2578e146c336b661196cf281ad664b73af6ef86abf61327
-F win/makefile.vc 77a686f40c42668e0bcdd07ecad78cbb8c032e6dc9a82ed9ff9cb756f348123f
+F win/makefile.vc 1b10f62e9b964d4de8c3cdb4054ca6500c2fba1c87b3b08cbd10b27c70e4b24c
 F win/nmakehlp.c 596eb953063417d11fd703856cb3342c47964e3e147c2542f8f237382b9c3be6
 F win/rules.vc 06f4eab1379d8741d904f40a425e23bb2d4e825d443c7f827a2e78eae2a6ac0c
 F win/tzint.rc bb1cf63b1b08daea8b07a9fc4a133a6170f76c81bdc650620f2ff4770112f6ce x
-P be6c8383aac2a63ec5482f5a2f4f2b9f974fd1eae4044a6fbb3b8e9b70d6fa6a 1b46a0f7b79fdfd09b37c8da057789b45288e0787461f646d8cadd211c051163
-R 141d96365da14a7a5214e1896734990f
-T +closed 1b46a0f7b79fdfd09b37c8da057789b45288e0787461f646d8cadd211c051163
+P 47726798171ad34eac3cdb2d6ae91d190a481d221965cbe52de519a33b6f5a5c
+R b1c24753bc64c1c20c8f64a9658b8958
 U alex
-Z 9fa1d4086fd14a6e55e5643409a85088
+Z 043a5088a5b4485279e1e2ccffad73c7
 # Remove this line to create a well-formed Fossil manifest.

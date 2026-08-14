@@ -175,12 +175,10 @@ PROJECT = tzint
 !endif
 # get project version from row "AC_INIT([project], [????])"
 !if [echo DOTVERSION = \>> versions.vc] \
-   && [nmakehlp -V ..\configure.in tzint >> versions.vc]
+   && [nmakehlp -V ..\configure.ac tzint >> versions.vc]
 !endif
-# get zint version from row "AC_DEFINE([ZINT_VERSION],["????"])"
-!if [echo ZINTVERSION = \>> versions.vc] \
-   && [nmakehlp -V ..\configure.in ZINT_VERSION >> versions.vc]
-!endif
+# The zint version is no longer read from here: tzint.c derives it from
+# zintconfig.h, which the backend brings along.
 !include "versions.vc"
 
 VERSION         = $(DOTVERSION:.=)
@@ -331,7 +329,6 @@ CON_CFLAGS	= $(cflags) $(cdebug) $(crt) -DCONSOLE
 TCL_CFLAGS	= -DPACKAGE_NAME="\"$(PROJECT)\"" \
 		  -DPACKAGE_VERSION="\"$(DOTVERSION)\"" \
 		  -DBUILD_$(PROJECT) \
-		  -DZINT_VERSION=\"$(ZINTVERSION)\" \
 		  -D_WINDOWS -DNO_CMD_FILE -DNO_PNG \
 		  $(BASE_CFLAGS) $(OPTDEFINES)
 

@@ -39,7 +39,11 @@ AC_DEFUN([TZINT_PATH_PNG], [
 	[enable_filecmd=yes])
 
     if test "$enable_filecmd" = "no"; then
+	# Without the file command nothing writes a raster file, so libpng is not
+	# needed either. ZINT_NO_PNG makes the backend leave png.c empty and
+	# report the missing support through ZBarcode_NoPng().
 	AC_DEFINE(NO_CMD_FILE)
+	AC_DEFINE(ZINT_NO_PNG)
     else
 	AC_ARG_WITH(png-include,
 	    [  --with-png-include=DIR   PNG includes are in DIR],
@@ -59,12 +63,23 @@ AC_DEFUN([TZINT_PATH_PNG], [
     #--------------------------------------------------------------------
     # Search for png.h in common locations
     #--------------------------------------------------------------------
+    # pkg-config knows where the distribution put libpng and is asked first;
+    # the directory list below is the fallback where it is absent or silent
+    if test "x${PNG_INC_DIR}" = "x" ; then
+	AC_PATH_PROG(PKG_CONFIG, pkg-config, none)
+	if test "${PKG_CONFIG}" != "none" && ${PKG_CONFIG} --exists libpng ; then
+	    png_pkg_inc=`${PKG_CONFIG} --variable=includedir libpng 2>/dev/null`
+	    if test "x${png_pkg_inc}" != "x" && test -f "${png_pkg_inc}/png.h" ; then
+		PNG_INC_DIR="${png_pkg_inc}"
+	    fi
+	fi
+    fi
+
     AC_MSG_CHECKING([for png header])
 
-    if test "x${PNG_INC_DIR}" = "x" ; then
-	# Search in common locations
-	png_inc_search="/usr/include /usr/local/include /opt/local/include /opt/homebrew/include /usr/include/libpng16 /usr/local/include/libpng16"
+    png_inc_search="/usr/include /usr/local/include /opt/local/include /opt/homebrew/include /usr/include/libpng16 /usr/local/include/libpng16"
 
+    if test "x${PNG_INC_DIR}" = "x" ; then
 	for dir in $png_inc_search ; do
 	    if test -f "$dir/png.h" ; then
 		PNG_INC_DIR="$dir"
@@ -74,7 +89,18 @@ AC_DEFUN([TZINT_PATH_PNG], [
     fi
 
     if test "x${PNG_INC_DIR}" = "x" || test ! -f "${PNG_INC_DIR}/png.h" ; then
-	AC_MSG_ERROR([Cannot find png.h. Use --with-png-include=DIR to specify location])
+	AC_MSG_RESULT([no])
+	AC_MSG_ERROR([Cannot find png.h.
+
+Searched: ${png_inc_search}
+
+On Debian and Ubuntu the runtime package libpng16-16 does not carry the
+headers; install the development package as well:
+
+    apt install libpng-dev
+
+Give the directory with --with-png-include=DIR if it is elsewhere, or build
+without the file command and its PNG dependency using --enable-filecmd=no.])
     fi
 
     AC_MSG_RESULT([${PNG_INC_DIR}])
@@ -83,12 +109,21 @@ AC_DEFUN([TZINT_PATH_PNG], [
     #--------------------------------------------------------------------
     # Search for libpng in common locations
     #--------------------------------------------------------------------
+    if test "x${PNG_LIB_DIR}" = "x" && test "$png_static" != "yes" ; then
+	if test "${PKG_CONFIG}" != "none" && test "x${PKG_CONFIG}" != "x" \
+		&& ${PKG_CONFIG} --exists libpng ; then
+	    png_pkg_lib=`${PKG_CONFIG} --variable=libdir libpng 2>/dev/null`
+	    if test "x${png_pkg_lib}" != "x" && test -d "${png_pkg_lib}" ; then
+		PNG_LIB_DIR="${png_pkg_lib}"
+	    fi
+	fi
+    fi
+
     AC_MSG_CHECKING([for libpng library])
 
-    if test "x${PNG_LIB_DIR}" = "x" ; then
-	# Search in common locations
-	png_lib_search="/usr/lib /usr/local/lib /opt/local/lib /opt/homebrew/lib /usr/lib/x86_64-linux-gnu"
+    png_lib_search="/usr/lib /usr/local/lib /opt/local/lib /opt/homebrew/lib /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu"
 
+    if test "x${PNG_LIB_DIR}" = "x" ; then
 	if test "$png_static" = "yes"; then
 	    png_lib_name="libpng.a"
 	else
@@ -109,7 +144,13 @@ AC_DEFUN([TZINT_PATH_PNG], [
     fi
 
     if test "x${PNG_LIB_DIR}" = "x" ; then
-	AC_MSG_ERROR([Cannot find libpng. Use --with-png-lib=DIR to specify location])
+	AC_MSG_RESULT([no])
+	AC_MSG_ERROR([Cannot find libpng.
+
+Searched: ${png_lib_search}
+
+Give the directory with --with-png-lib=DIR, or build without the file command
+and its PNG dependency using --enable-filecmd=no.])
     fi
 
     # Verify the library exists
