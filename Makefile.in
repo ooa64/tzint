@@ -347,6 +347,29 @@ DIST_DIR	= $(DIST_ROOT)/$(PKG_DIR)
 DIST_INSTALL_DATA	= CPPROG='cp -p' $(INSTALL) -m 644
 DIST_INSTALL_SCRIPT	= CPPROG='cp -p' $(INSTALL) -m 755
 
+# The release archive, and putting it on the server. Separate from the TEA
+# "dist" target above, which builds a directory tree for a distribution the TEA
+# way; these two produce the single file that gets published and hand it to
+# fossil as an unversioned file.
+#
+# tzint is a C extension, so only the source travels: a built library holds for
+# one platform and one Tcl series, and a binary archive named after neither
+# would be indistinguishable from any other on the download page.
+archive:
+	sh $(srcdir)/tools/archive.sh @PACKAGE_NAME@ @PACKAGE_VERSION@
+
+release: archive
+	@echo ""
+	@echo "Release archive for $(PACKAGE_NAME) $(PACKAGE_VERSION) created in uv/:"
+	@ls -l uv/$(PACKAGE_NAME)$(PACKAGE_VERSION)-src.tar.gz
+	@echo "Publish it with: make publish"
+
+publish:
+	fossil uv add uv/$(PACKAGE_NAME)$(PACKAGE_VERSION)-src.tar.gz --as $(PACKAGE_NAME)$(PACKAGE_VERSION)-src.tar.gz
+	fossil uv add uv/download.html --as download.html
+	fossil uv sync
+	fossil uv list
+
 dist-clean:
 	rm -rf $(DIST_DIR) $(DIST_ROOT)/$(PKG_DIR).tar.*
 
@@ -393,10 +416,14 @@ dist: dist-clean $(srcdir)/manifest.uuid
 # variable in configure.ac
 #========================================================================
 
+# Note on uv/: only the generated artifacts are removed, never
+# uv/template-download.html - that one is a SOURCE file living in the same
+# directory. A blanket "rm -rf uv" would take it with it.
 clean:
 	-test -z "$(BINARIES)" || rm -f $(BINARIES)
 	-rm -f *.$(OBJEXT) core *.core
 	-rm -f sampleUuid.h manifest.h manifest.txt
+	-rm -f uv/$(PACKAGE_NAME)*.tar.gz uv/$(PACKAGE_NAME)*.zip uv/download.html
 	-test -z "$(CLEANFILES)" || rm -f $(CLEANFILES)
 
 distclean: clean

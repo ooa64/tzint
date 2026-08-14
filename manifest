@@ -1,8 +1,8 @@
-C Version-1.3
-D 2026-08-14T04:43:26.971
+C Add\srelease\sand\spublish\stargets\n\n-\sMakefile.in\s-\snew\stargets\sarchive,\srelease\sand\spublish,\sfollowing\swhat\stclpdf\sdoes;\sclean\sremoves\sthe\sgenerated\sfiles\sin\suv\sand\sleaves\sthe\stemplate\sbeside\sthem\n-\stools/archive.sh\s-\sbuilds\sthe\ssource\sarchive\sand\sgenerates\sthe\sdownload\spage\sfrom\sthe\stemplate\n-\suv/template-download.html\s-\sthe\sdownload\spage,\snaming\slibpng\sand\sthe\senable-filecmd=no\sroute\sfor\sbuilding\swithout\sit\n-\sOnly\ssource\sis\spublished;\sa\sbuilt\slibrary\sholds\sfor\sone\splatform\sand\sone\sTcl\sseries,\sso\sthere\sis\sno\sbinary\sarchive\sand\sno\szip\n-\sVerified\sby\sunpacking\sthe\sarchive\selsewhere\sand\sbuilding\sfrom\sit:\sconfigure,\smake\sand\s125\sof\s125\stests
+D 2026-08-14T21:01:11.559
 F .gitattributes 733e36ea315cad1b0e3225455af021ee6fa653befa2f404373d26200b9918998
 F LICENSE.zint 7b6f5d696075597acb6e81020ff95339a3438dc1b298d3208877b3bac22ffe39
-F Makefile.in a51cf4515337c053a3fb340af124e9ae5d40369219e11580cf2a1a6170fab09a
+F Makefile.in 56807c33d61f5863520331e88ea8ca643d5a2c5ae890c5232291e48ec57c4047
 F README 9bceba4f39f81679c3a26f0e58c1d64f9be9b1c2a2751e89e87c22e046c1118c
 F aclocal.m4 9a0d5abd6f90fb8ebf448f75175de07fbdf53ab89345851e6e01ceff15983317
 F code128.png e8346bfc8be67012dd55eec5f06dcae271b1877226dd091845398a0e9b7717f6
@@ -128,16 +128,15 @@ F tclconfig/tcl.m4 05f66f43a150de7d29f137c8096da51551c6ad0db1a5702b8ec4d298ecf77
 F tests/all.tcl 88b20641d1597a01db968396a12b251130c7e609ce7866de9242c14992f9718e
 F tests/encode.test 4dd6073784d5fb2ecaeb6f228d08b976f3500edf3441e6d72d801aa3c0fd911a
 F tests/info.test 5b7118e352b7ecb208460363a2360449c4c9805756b40e36e84fd44f884c295e
+F tools/archive.sh 1e2b354ed4c84150cd50062ede8246f2baa971b3ff65af14d8c316a10408a0d9 x
 F tools/mkversion.tcl b4d936fc6e55d794e2578e146c336b661196cf281ad664b73af6ef86abf61327
+F uv/template-download.html 42007ab9d9581440a42e612dbf93169e79ddd9601444fa2ba44d443a6c286836
 F win/makefile.vc 1b10f62e9b964d4de8c3cdb4054ca6500c2fba1c87b3b08cbd10b27c70e4b24c
 F win/nmakehlp.c 596eb953063417d11fd703856cb3342c47964e3e147c2542f8f237382b9c3be6
 F win/rules.vc 06f4eab1379d8741d904f40a425e23bb2d4e825d443c7f827a2e78eae2a6ac0c
 F win/tzint.rc bb1cf63b1b08daea8b07a9fc4a133a6170f76c81bdc650620f2ff4770112f6ce x
-P e675dca202a93f2798480660cb74ae0dcd8ae678c26bd378cfd4910314a0e903
-R b1c24753bc64c1c20c8f64a9658b8958
-T +bgcolor * #fea5f4
-T +sym-release *
-T +sym-version-1.3 *
+P 9944928914c996798240d3532a5da792496659db4bca71a5d4a964a6080721a1
+R c02e14f831faf72cc6c6e8d48cc24b16
 U alex
-Z 012ded7d0f451dd61887439213dd7551
+Z 980d26588270beae38932e93963efcd1
 # Remove this line to create a well-formed Fossil manifest.
