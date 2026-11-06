@@ -1,21 +1,20 @@
-/* 2of5.c - Handles Code 2 of 5 barcodes */
-
+/* 2of5.c - Handles non-interleaved Code 2 of 5 barcodes */
 /*
     libzint - the open source barcode library
-    Copyright (C) 2008 Robin Stuart <robin@zint.org.uk>
+    Copyright (C) 2008-2025 Robin Stuart <rstuart114@gmail.com>
 
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -26,344 +25,118 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
-*/
+ */
+/* SPDX-License-Identifier: BSD-3-Clause */
 
-#include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include "common.h"
-#ifdef _MSC_VER
-#include <malloc.h>
-#define inline _inline
-#endif
+#include "gs1.h"
 
-static const char *C25MatrixTable[10] = {"113311", "311131", "131131", "331111", "113131", "313111",
-	"133111", "111331", "311311", "131311"};
+static const char C25MatrixTable[10][6] = {
+    {'1','1','3','3','1','1'}, {'3','1','1','1','3','1'}, {'1','3','1','1','3','1'}, {'3','3','1','1','1','1'},
+    {'1','1','3','1','3','1'}, {'3','1','3','1','1','1'}, {'1','3','3','1','1','1'}, {'1','1','1','3','3','1'},
+    {'3','1','1','3','1','1'}, {'1','3','1','3','1','1'}
+};
 
-static const char *C25IndustTable[10] = {"1111313111", "3111111131", "1131111131", "3131111111", "1111311131",
-	"3111311111", "1131311111", "1111113131", "3111113111", "1131113111"};
+static const char C25IndustTable[10][10] = {
+    {'1','1','1','1','3','1','3','1','1','1'}, {'3','1','1','1','1','1','1','1','3','1'},
+    {'1','1','3','1','1','1','1','1','3','1'}, {'3','1','3','1','1','1','1','1','1','1'},
+    {'1','1','1','1','3','1','1','1','3','1'}, {'3','1','1','1','3','1','1','1','1','1'},
+    {'1','1','3','1','3','1','1','1','1','1'}, {'1','1','1','1','1','1','3','1','3','1'},
+    {'3','1','1','1','1','1','3','1','1','1'}, {'1','1','3','1','1','1','3','1','1','1'}
+};
 
-static const char *C25InterTable[10] = {"11331", "31113", "13113", "33111", "11313", "31311", "13311", "11133",
-	"31131", "13131"};
+/* Note `c25_common()` assumes Stop string length one less than Start */
+static const char C25MatrixStartStop[2][6] =    { {'4', '1', '1', '1', '1', '1'}, {'4', '1', '1', '1', '1'} };
+static const char C25IndustStartStop[2][6] =    { {'3', '1', '3', '1', '1', '1'}, {'3', '1', '1', '1', '3'} };
+static const char C25IataLogicStartStop[2][6] = { {'1', '1', '1', '1'},           {'3', '1', '1'} };
 
-static inline char check_digit(unsigned int count)
-{
-	return itoc((10 - (count % 10)) % 10);
+/* Common to Standard (Matrix), Industrial, IATA, and Data Logic */
+static int c25_common(struct zint_symbol *symbol, const unsigned char source[], int length, const int max,
+            const int is_matrix, const char start_stop[2][6], const int start_length, const int error_base) {
+
+    int i;
+    char dest[818]; /* Largest destination 4 + (80 + 1) * 10 + 3 + 1 = 818 */
+    char *d = dest;
+    unsigned char local_source[113 + 1]; /* Largest maximum 113 + optional check digit */
+    const int have_checkdigit = symbol->option_2 == 1 || symbol->option_2 == 2;
+    const int content_segs = symbol->output_options & BARCODE_CONTENT_SEGS;
+
+    if (length > max) {
+        /* errtxt 301: 303: 305: 307: */
+        return ZEXT z_errtxtf(ZINT_ERROR_TOO_LONG, symbol, error_base, "Input length %1$d too long (maximum %2$d)",
+                                length, max);
+    }
+    if ((i = z_not_sane(NEON_F, source, length))) {
+        /* Note: for all "at position" error messages, escape sequences not accounted for */
+        /* errtxt 302: 304: 306: 308: */
+        return z_errtxtf(ZINT_ERROR_INVALID_DATA, symbol, error_base + 1,
+                        "Invalid character at position %d in input (digits only)", i);
+    }
+
+    memcpy(local_source, source, length);
+
+    if (have_checkdigit) {
+        /* Add standard GS1 check digit */
+        local_source[length] = zint_gs1_check_digit(source, length);
+        length++;
+        if (symbol->debug & ZINT_DEBUG_PRINT) printf("Check digit: %c\n", local_source[length - 1]);
+    }
+
+    /* Start character */
+    memcpy(d, start_stop[0], start_length);
+    d += start_length;
+
+    if (is_matrix) {
+        for (i = 0; i < length; i++, d += 6) {
+            memcpy(d, C25MatrixTable[local_source[i] - '0'], 6);
+        }
+    } else {
+        for (i = 0; i < length; i++, d += 10) {
+            memcpy(d, C25IndustTable[local_source[i] - '0'], 10);
+        }
+    }
+
+    /* Stop character */
+    memcpy(d, start_stop[1], start_length - 1);
+    d += start_length - 1;
+
+    z_expand(symbol, dest, d - dest);
+
+    /* Exclude check digit from HRT if hidden */
+    z_hrt_cpy_nochk(symbol, local_source, length - (symbol->option_2 == 2));
+
+    if (content_segs && z_ct_cpy(symbol, local_source, length)) {
+        return ZINT_ERROR_MEMORY; /* `z_ct_cpy()` only fails with OOM */
+    }
+
+    return 0;
 }
 
-int matrix_two_of_five(struct zint_symbol *symbol, unsigned char source[], int length)
-{ /* Code 2 of 5 Standard (Code 2 of 5 Matrix) */
-	
-	int i, error_number;
-	char dest[512]; /* 6 + 80 * 6 + 6 + 1 ~ 512*/
-
-	error_number = 0;
-
-	if(length > 80) {
-		strcpy(symbol->errtxt, "Input too long");
-		return ERROR_TOO_LONG;
-	}
-	error_number = is_sane(NEON, source, length);
-	if(error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid characters in data");
-		return error_number;
-	}
-
-	/* start character */
-	strcpy(dest, "411111");
-
-	for(i = 0; i < length; i++) {
-		lookup(NEON, C25MatrixTable, source[i], dest);
-	}
-
-	/* Stop character */
-	concat (dest, "41111");
-
-	expand(symbol, dest);
-	ustrcpy(symbol->text, source);
-	return error_number;
+/* Code 2 of 5 Standard (Code 2 of 5 Matrix) */
+INTERNAL int zint_c25standard(struct zint_symbol *symbol, unsigned char source[], int length) {
+    /* 9 + (112 + 1) * 10 + 8 = 1147 */
+    return c25_common(symbol, source, length, 112, 1 /*is_matrix*/, C25MatrixStartStop, 6, 301);
 }
 
-int industrial_two_of_five(struct zint_symbol *symbol, unsigned char source[], int length)
-{ /* Code 2 of 5 Industrial */
-
-	int i, error_number;
-	char dest[512]; /* 6 + 40 * 10 + 6 + 1 */
-
-	error_number = 0;
-
-	if(length > 45) {
-		strcpy(symbol->errtxt, "Input too long");
-		return ERROR_TOO_LONG;
-	}
-	error_number = is_sane(NEON, source, length);
-	if(error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid character in data");
-		return error_number;
-	}
-
-	/* start character */
-	strcpy(dest, "313111");
-
-	for(i = 0; i < length; i++) {
-		lookup(NEON, C25IndustTable, source[i], dest);
-	}
-
-	/* Stop character */
-	concat (dest, "31113");
-
-	expand(symbol, dest);
-	ustrcpy(symbol->text, source);
-	return error_number;
+/* Code 2 of 5 IATA */
+INTERNAL int zint_c25iata(struct zint_symbol *symbol, unsigned char source[], int length) {
+    /* 4 + (80 + 1) * 14 + 5 = 1143 */
+    return c25_common(symbol, source, length, 80, 0 /*is_matrix*/, C25IataLogicStartStop, 4, 305);
 }
 
-int iata_two_of_five(struct zint_symbol *symbol, unsigned char source[], int length)
-{ /* Code 2 of 5 IATA */
-	int i, error_number;
-	char dest[512]; /* 4 + 45 * 10 + 3 + 1 */
-
-	error_number = 0;
-
-	if(length > 45) {
-		strcpy(symbol->errtxt, "Input too long");
-		return ERROR_TOO_LONG;
-	}
-	error_number = is_sane(NEON, source, length);
-	if(error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid characters in data");
-		return error_number;
-	}
-
-	/* start */
-	strcpy(dest, "1111");
-	
-	for(i = 0; i < length; i++) {
-		lookup(NEON, C25IndustTable, source[i], dest);
-	}
-
-	/* stop */
-	concat (dest, "311");
-
-	expand(symbol, dest);
-	ustrcpy(symbol->text, source);
-	return error_number;
+/* Code 2 of 5 Data Logic */
+INTERNAL int zint_c25logic(struct zint_symbol *symbol, unsigned char source[], int length) {
+    /* 4 + (113 + 1) * 10 + 5 = 1149 */
+    return c25_common(symbol, source, length, 113, 1 /*is_matrix*/, C25IataLogicStartStop, 4, 307);
 }
 
-int logic_two_of_five(struct zint_symbol *symbol, unsigned char source[], int length)
-{ /* Code 2 of 5 Data Logic */
-	
-	int i, error_number;
-	char dest[512]; /* 4 + 80 * 6 + 3 + 1 */
-
-	error_number = 0;
-
-	if(length > 80) {
-		strcpy(symbol->errtxt, "Input too long");
-		return ERROR_TOO_LONG;
-	}
-	error_number = is_sane(NEON, source, length);
-	if(error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid characters in data");
-		return error_number;
-	}
-
-	/* start character */
-	strcpy(dest, "1111");
-
-	for(i = 0; i < length; i++) {
-		lookup(NEON, C25MatrixTable, source[i], dest);
-	}
-
-	/* Stop character */
-	concat (dest, "311");
-
-	expand(symbol, dest);
-	ustrcpy(symbol->text, source);
-	return error_number;
+/* Code 2 of 5 Industrial */
+INTERNAL int zint_c25ind(struct zint_symbol *symbol, unsigned char source[], int length) {
+    /* 10 + (79 + 1) * 14 + 9 = 1139 */
+    return c25_common(symbol, source, length, 79, 0 /*is_matrix*/, C25IndustStartStop, 6, 303);
 }
 
-int interleaved_two_of_five(struct zint_symbol *symbol, unsigned char source[], int length)
-{ /* Code 2 of 5 Interleaved */
-
-	int i, j, k, error_number;
-	char bars[7], spaces[7], mixed[14], dest[1000];
-#ifndef _MSC_VER
-	unsigned char temp[length + 2];
-#else
-	unsigned char* temp = (unsigned char *)_alloca((length + 2) * sizeof(unsigned char));
-#endif
-
-	error_number = 0;
-
-	if(length > 89) {
-		strcpy(symbol->errtxt, "Input too long");
-		return ERROR_TOO_LONG;
-	}
-	error_number = is_sane(NEON, source, length);
-	if (error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid characters in data");
-		return error_number;
-	}
-
-	ustrcpy(temp, (unsigned char *) "");
-	/* Input must be an even number of characters for Interlaced 2 of 5 to work:
-	   if an odd number of characters has been entered then add a leading zero */
-	if (length & 1)
-	{
-		ustrcpy(temp, (unsigned char *) "0");
-		length++;
-	}
-	uconcat(temp, source);
-
-	/* start character */
-	strcpy(dest, "1111");
-
-	for(i = 0; i < length; i+=2 )
-	{
-		/* look up the bars and the spaces and put them in two strings */
-		strcpy(bars, "");
-		lookup(NEON, C25InterTable, temp[i], bars);
-		strcpy(spaces, "");
-		lookup(NEON, C25InterTable, temp[i + 1], spaces);
-
-		/* then merge (interlace) the strings together */
-		k = 0;
-		for(j = 0; j <= 4; j++)
-		{
-			mixed[k] = bars[j]; k++;
-			mixed[k] = spaces[j]; k++;
-		}
-		mixed[k] = '\0';
-		concat (dest, mixed);
-	}
-
-	/* Stop character */
-	concat (dest, "311");
-
-	expand(symbol, dest);
-	ustrcpy(symbol->text, temp);
-	return error_number;
-
-}
-
-int itf14(struct zint_symbol *symbol, unsigned char source[], int length)
-{
-	int i, error_number, zeroes;
-	unsigned int count;
-	char localstr[16];
-
-	error_number = 0;
-
-	count = 0;
-
-	if(length > 13) {
-		strcpy(symbol->errtxt, "Input too long");
-		return ERROR_TOO_LONG;
-	}
-
-	error_number = is_sane(NEON, source, length);
-	if(error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid character in data");
-		return error_number;
-	}
-
-	/* Add leading zeros as required */
-	zeroes = 13 - length;
-	for(i = 0; i < zeroes; i++) {
-		localstr[i] = '0';
-	}
-	strcpy(localstr + zeroes, (char *)source);
-
-	/* Calculate the check digit - the same method used for EAN-13 */
-
-	for (i = 12; i >= 0; i--) {
-		count += ctoi(localstr[i]);
-
-		if (!(i & 1)) {
-			count += 2 * ctoi(localstr[i]);
-		}
-	}
-	localstr[13] = check_digit(count);
-	localstr[14] = '\0';
-	error_number = interleaved_two_of_five(symbol, (unsigned char *)localstr, strlen(localstr));
-	ustrcpy(symbol->text, (unsigned char*)localstr);
-	return error_number;
-}
-
-int dpleit(struct zint_symbol *symbol, unsigned char source[], int length)
-{ /* Deutshe Post Leitcode */
-	int i, error_number;
-	unsigned int count;
-	char localstr[16];
-	int zeroes;
-
-	error_number = 0;
-	count = 0;
-	if(length > 13) {
-		strcpy(symbol->errtxt, "Input wrong length");
-		return ERROR_TOO_LONG;
-	}
-	error_number = is_sane(NEON, source, length);
-	if(error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid characters in data");
-		return error_number;
-	}
-
-	zeroes = 13 - length;
-	for(i = 0; i < zeroes; i++)
-		localstr[i] = '0';
-	strcpy(localstr + zeroes, (char *)source);
-	
-	for (i = 12; i >= 0; i--)
-	{
-		count += 4 * ctoi(localstr[i]);
-
-		if (i & 1) {
-			count += 5 * ctoi(localstr[i]);
-		}
-	}
-	localstr[13] = check_digit(count);
-	localstr[14] = '\0';
-	error_number = interleaved_two_of_five(symbol, (unsigned char *)localstr, strlen(localstr));
-	ustrcpy(symbol->text, (unsigned char*)localstr);
-	return error_number;
-}
-
-int dpident(struct zint_symbol *symbol, unsigned char source[], int length)
-{ /* Deutsche Post Identcode */
-	int i, error_number, zeroes;
-	unsigned int count;
-	char localstr[16];
-
-	count = 0;
-	if(length > 11) {
-		strcpy(symbol->errtxt, "Input wrong length");
-		return ERROR_TOO_LONG;
-	}
-	error_number = is_sane(NEON, source, length);
-	if(error_number == ERROR_INVALID_DATA) {
-		strcpy(symbol->errtxt, "Invalid characters in data");
-		return error_number;
-	}
-
-	zeroes = 11 - length;
-	for(i = 0; i < zeroes; i++)
-		localstr[i] = '0';
-	strcpy(localstr + zeroes, (char *)source);
-	
-	for (i = 10; i >= 0; i--)
-	{
-		count += 4 * ctoi(localstr[i]);
-
-		if (i & 1) {
-			count += 5 * ctoi(localstr[i]);
-		}
-	}
-	localstr[11] = check_digit(count);
-	localstr[12] = '\0';
-	error_number = interleaved_two_of_five(symbol, (unsigned char *)localstr, strlen(localstr));
-	ustrcpy(symbol->text, (unsigned char*)localstr);
-	return error_number;
-}
+/* vim: set ts=4 sw=4 et : */

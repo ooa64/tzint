@@ -1,20 +1,23 @@
-/* 
-
+/*
     This is a simple Reed-Solomon encoder
     (C) Cliff Hones 2004
- 
+*/
+/*
+    libzint - the open source barcode library
+    Copyright (C) 2009-2025 Robin Stuart <rstuart114@gmail.com>
+
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions
     are met:
 
-    1. Redistributions of source code must retain the above copyright 
-       notice, this list of conditions and the following disclaimer.  
+    1. Redistributions of source code must retain the above copyright
+       notice, this list of conditions and the following disclaimer.
     2. Redistributions in binary form must reproduce the above copyright
        notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.  
+       documentation and/or other materials provided with the distribution.
     3. Neither the name of the project nor the names of its contributors
        may be used to endorse or promote products derived from this software
-       without specific prior written permission. 
+       without specific prior written permission.
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
     ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -25,27 +28,52 @@
     OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+    OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
 
  */
+/* SPDX-License-Identifier: BSD-3-Clause */
 
-#ifndef __REEDSOL_H
-#define __REEDSOL_H
+#ifndef Z_REEDSOL_H
+#define Z_REEDSOL_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif /* __cplusplus */
 
-extern void rs_init_gf(int poly);
-extern void rs_init_code(int nsym, int index);
-extern void rs_encode(int len, unsigned char *data, unsigned char *res);
-extern void rs_encode_long(int len, unsigned int *data, unsigned int *res);
-extern void rs_free(void);
+typedef struct {
+    const unsigned char *logt; /* These are static */
+    const unsigned char *alog;
+    unsigned char rspoly[256]; /* Generated poly */
+    unsigned char log_rspoly[256]; /* Logs of poly */
+    int nsym; /* Degree of poly */
+    int zero; /* Set if poly has a zero coeff */
+} rs_t;
+
+typedef struct {
+    unsigned int *logt; /* These are malloced */
+    unsigned int *alog;
+    unsigned short rspoly[4096]; /* Generated poly, 12-bit max - needs to be enlarged if > 12-bit used */
+    unsigned int log_rspoly[4096]; /* Logs of poly */
+    int nsym; /* Degree of poly */
+    int zero; /* Set if poly has a zero coeff */
+} rs_uint_t;
+
+INTERNAL void zint_rs_init_gf(rs_t *rs, const unsigned int prime_poly);
+INTERNAL void zint_rs_init_code(rs_t *rs, const int nsym, int index);
+INTERNAL void zint_rs_encode(const rs_t *rs, const int datalen, const unsigned char *data, unsigned char *res);
+INTERNAL void zint_rs_encode_uint(const rs_t *rs, const int datalen, const unsigned int *data, unsigned int *res);
+/* No free needed as log tables static */
+
+INTERNAL int zint_rs_uint_init_gf(rs_uint_t *rs_uint, const unsigned int prime_poly, const int logmod);
+INTERNAL void zint_rs_uint_init_code(rs_uint_t *rs_uint, const int nsym, int index);
+INTERNAL void zint_rs_uint_encode(const rs_uint_t *rs_uint, const int datalen, const unsigned int *data,
+                unsigned int *res);
+INTERNAL void zint_rs_uint_free(rs_uint_t *rs_uint);
 
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
-#endif				/* __REEDSOL_H */
+/* vim: set ts=4 sw=4 et : */
+#endif /* Z_REEDSOL_H */

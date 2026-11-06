@@ -1,107 +1,210 @@
-This is a sample extension showing an implementation of the Tcl Extension
-Architecture (TEA).  Please see the webpage
+tzint - a Tcl package for the libzint barcode library
+=====================================================
 
-	http://www.tcl.tk/doc/tea/
+tzint encodes barcodes from Tcl. It embeds the libzint backend by Robin Stuart
+and exposes it as a single command, ::tzint::Encode, that hands the result back
+in a Tcl variable or writes it to a file. No Tk is needed; the package produces
+data, not windows.
 
-for more details on TEA.  You can also read the enclosed "tea.pdf" document
-for instructions on how to adapt this sample extension to your extension.
+The embedded backend is libzint 2.16.0, which reaches over 100 symbologies.
+Among them are Code 128, Code 39, EAN and UPC, ITF, QR Code, Micro QR, rMQR,
+Data Matrix, PDF417, MicroPDF417, Aztec Code, MaxiCode, DotCode, Han Xin,
+Ultracode, GS1 DataBar, Code 16k, Code One, Grid Matrix, DX Film Edge, the
+postal codes of several countries including Royal Mail Mailmark, and the
+composite symbologies. The command "::tzint::Encode symbologies" lists the
+names this build accepts.
 
-This package is a freely available open source package.  You can do
-virtually anything you like with it, such as modifying it, redistributing
-it, and selling it either in whole or in part.  See the file
-"license.terms" for complete information.
+This package is built with the Tcl Extension Architecture (TEA); see
+http://www.tcl.tk/doc/tea/ for what that means for the build system.
 
-CONTENTS
+
+REQUIREMENTS
+============
+
+Tcl 8.5 or later, including the 9.x series. The package uses the stubs
+mechanism, so a build works with any Tcl of that range.
+
+libpng and zlib, for the PNG output. Both are looked for by the configure
+script; see BUILDING below for the options that point it at them.
+
+A tclConfig.sh from the Tcl installation you want to build against. TEA takes
+the compiler and its flags from there.
+
+
+BUILDING
 ========
-The following is a short description of the files you will find in
-the sample extension.
 
-Makefile.in	Makefile template.  The configure script uses this file to
-		produce the final Makefile.
+Unix, Linux and macOS:
 
-README		This file
-
-README.sha	A description of the extension itself.
-
-aclocal.m4	Generated file.  Do not edit.  Autoconf uses this as input
-		when generating the final configure script.  See "tcl.m4"
-		below.
-
-configure	Generated file.  Do not edit.  This must be regenerated
-		anytime configure.in or tclconfig/tcl.m4 changes.
-
-configure.in	Configure script template.  Autoconf uses this file as input
-		to produce the final configure script.
-
-pkgIndex.tcl.in Package index template.  The configure script will use
-		this file as input to create pkgIndex.tcl.
-
-sample.c	Core Secure Hash Algorithm code.
-
-sample.h	Header file for functions in the C files.
-
-sha1.n		Unix nroff man page
-
-tclsample.c	Implementation of new Tcl command "sha1".
-
-tea.pdf		PDF file describing the current implementation of the
-		Tcl Extension Architecture
-
-tclconfig/	This directory contains various template files that build
-		the configure script.  They should not need modification.
-
-	install-sh	Program used for copying binaries and script files
-			to their install locations.
-
-	tcl.m4		Collection of Tcl autoconf macros.  Included by
-			aclocal.m4 to define SC_* macros.
-
-UNIX BUILD
-==========
-
-Building under most UNIX systems is easy, just run the configure script
-and then run make. For more information about the build process, see
-the tcl/unix/README file in the Tcl src dist. The following minimal
-example will install the extension in the /opt/tcl directory.
-
-	$ cd sampleextension
-	$ ./configure --prefix=/opt/tcl
+	$ ./configure --with-tcl=/path/to/lib
 	$ make
 	$ make install
 
-WINDOWS BUILD
+--with-tcl names the directory holding tclConfig.sh. If the PNG headers or
+libraries are not in the default location, point the configure script at them:
+
+	--with-png-include=DIR	directory holding png.h
+	--with-png-lib=DIR	directory holding the libpng library
+	--enable-png-static	link libpng statically
+
+The configure script is generated from configure.ac and tclconfig/tcl.m4; after
+changing either, regenerate it with autoconf.
+
+Note that the build writes its object files into the source directory. A build
+tree separate from the source directory therefore needs a "make clean" in the
+source directory first, otherwise make finds the stale objects through VPATH
+and links them instead of compiling new ones.
+
+Windows:
+
+The Msys and Mingw route uses the configure script above and produces native
+binaries. For a build with Visual C++ use the files in the win subdirectory:
+
+	> nmake -f makefile.vc
+	> nmake -f makefile.vc install INSTALLDIR=c:\path\to\tcl
+
+The object list in win/makefile.vc is maintained by hand and has to match the
+sources listed in configure.ac.
+
+
+INSTALLING
+==========
+
+"make install" puts the shared library and pkgIndex.tcl into a versioned
+directory below the Tcl installation, so that
+
+	package require tzint
+
+finds it. On Windows any dependent DLLs belong in a directory on PATH.
+
+
+USING
+=====
+
+	package require tzint
+
+	# the version of the embedded libzint, and what it can encode
+	::tzint::Encode version
+	::tzint::Encode symbologies
+
+	# a matrix of "0" and "1" rows, one string per pixel row
+	::tzint::Encode bits data "Hello Tcl" -barcode code128
+	dict get $data width
+	dict get $data height
+	foreach row [dict get $data bits] { puts $row }
+
+	# an X bitmap, ready for "image create bitmap -data ..."
+	::tzint::Encode xbm data "Hello Tcl" -barcode qrcode
+
+	# vector output, as a string
+	::tzint::Encode svg data "Hello Tcl" -barcode qrcode
+	::tzint::Encode eps data "Hello Tcl" -barcode code128
+
+	# straight to a file, the extension picks the format
+	::tzint::Encode file symbol.png "Hello Tcl" -barcode code128
+
+	# colours, as RGB or as RGBA for a translucent one
+	::tzint::Encode file symbol.png "Hello Tcl" -barcode code128 \
+	    -fg 000000 -bg ffffff00
+
+Encode returns the status libzint reports: 0 when it has nothing to remark, 1
+to 4 for a warning, 5 and above for a failure. A warning still delivers the
+symbol, so drawing the result works whether or not the value is looked at; a
+failure delivers nothing. The -stat option collects the details:
+
+	::tzint::Encode bits data "Hello Tcl" -barcode code128 -stat info
+	# info holds: zint, error, rows, columns, width, height
+
+Options that tzint itself rejects, such as an unknown symbology or a value out
+of range, raise a Tcl error instead.
+
+Input outside the character set a symbology uses by default makes libzint
+choose an Extended Channel Interpretation itself and answer with a warning.
+-eci picks one instead; 26 is UTF-8, 3 is ISO 8859-1. This is what an EPC QR
+code for a bank transfer needs, whose data declares its own encoding:
+
+	set epc "BCD\n002\n1\nSCT\nBANKDEFFXXX\nMüller GmbH\n\
+	    DE89370400440532013000\nEUR12.34\n\n\nRechnung über 12,34 €"
+	::tzint::Encode file giro.svg $epc -barcode qrcode -security 2 -eci 26
+
+The file command writes the raster formats BMP, GIF, PCX, PNG and TIF and the
+vector formats EMF, EPS and SVG, chosen by the extension of the file name. A
+TXT extension writes a hex dump of the encoded data; for a matrix of modules
+use the bits command.
+
+The resolution stored in the file is set with -dpi, or with -dpmm in the dots
+per millimetre libzint uses. It reaches BMP, EMF, PCX, PNG and TIF; without it
+the file carries no resolution.
+
+	::tzint::Encode file symbol.png "Hello Tcl" -barcode code128 -dpi 300
+
+For vector output tzint draws one unit per module, the size it has always
+produced, while libzint itself draws two. The -vectorscale option selects
+between the two:
+
+	::tzint::Encode svg data "Hello Tcl" -barcode code128                    ;# 1 unit
+	::tzint::Encode svg data "Hello Tcl" -barcode code128 -vectorscale zint  ;# 2 units
+
+Two further commands describe the build of the package itself:
+
+	::tzint::manifest	a dictionary with version, date, check-in,
+				build-hash and uuid
+	::tzint::build-info	compiler and build details, in the manner of
+				::tcl::build-info. Only present when the
+				interpreter provides that command, from Tcl 8.7 on.
+
+Every command and option is described in the manual page, doc/tzint.n. The
+older doc/tzint.unsupported still carries an earlier description of the file
+command and is superseded by it.
+
+
+TESTING
+=======
+
+	$ make test
+
+runs the tcltest suite in the tests directory against the library just built.
+tests/info.test covers the manifest commands, tests/encode.test the encoding
+itself: every symbology in the table, all four output commands, the file
+formats, the options and the errors.
+
+
+DOCUMENTATION
 =============
 
-The recommended method to build extensions under windows is to use the
-Msys + Mingw build process. This provides a Unix-style build while
-generating native Windows binaries. Using the Msys + Mingw build tools
-means that you can use the same configure script as per the Unix build
-to create a Makefile. See the tcl/win/README file for the URL of
-the Msys + Mingw download.
+doc/tzint.n		manual page, describing every command and option
+doc/tzintsample.tcl	a runnable example
+doc/tzint.unsupported	an earlier description of the file command, kept for
+			reference and superseded by the manual page
 
-If you have VC++ then you may wish to use the files in the win
-subdirectory and build the extension using just VC++. These files have
-been designed to be as generic as possible but will require some
-additional maintenance by the project developer to synchronise with
-the TEA configure.in and Makefile.in files. Instructions for using the
-VC++ makefile are written in the first part of the Makefile.vc
-file.
+The libzint manual documents the symbologies themselves and the meaning of
+their options:
 
-INSTALLATION
+	https://zint.org.uk/manual/
+
+
+CONTENTS
+========
+
+generic/	the tzint sources and the embedded libzint backend
+doc/		manual page and example
+tests/		the tcltest suite
+tools/		mkversion.tcl, which derives manifest.h from the checkout
+win/		makefile.vc and friends for the Visual C++ build
+tclconfig/	tcl.m4 and install-sh, taken from the TEA project
+
+
+LICENSE
+=======
+
+tzint is Copyright (C) 2014-2026 Alexander Schoepe and Joerg Mehring and is
+distributed under the BSD 3 clause license; see license.terms.
+
+The embedded libzint backend is Copyright Robin Stuart and contributors. It has
+been under the BSD 3 clause license since May 2013; see LICENSE.zint.
+
+
+PROJECT HOME
 ============
 
-The installation of a TEA package is structure like so:
-
-         $exec_prefix
-          /       \
-        lib       bin
-         |         |
-   PACKAGEx.y   (dependent .dll files on Windows)
-         |
-  pkgIndex.tcl (.so|.dll files)
-
-The main .so|.dll library file gets installed in the versioned PACKAGE
-directory, which is OK on all platforms because it will be directly
-referenced with by 'load' in the pkgIndex.tcl file.  Dependent DLL files on
-Windows must go in the bin directory (or other directory on the user's
-PATH) in order for them to be found.
+	https://fossil.sowaswie.de/tzint

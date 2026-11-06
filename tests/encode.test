@@ -1,0 +1,1036 @@
+#
+# Commands covered: tzint::Encode
+#
+
+#
+# (c) 2026 Alexander Schoepe
+#
+# See the file "license.terms" for information on usage and redistribution
+# of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+
+if {[lsearch [namespace children] ::tcltest] == -1} {
+  package require tcltest 2
+  namespace import -force ::tcltest::*
+  loadTestedCommands
+}
+
+package require tzint
+
+# Encode reports zint's own status as its return value; a Tcl error is only
+# raised for problems tzint itself detects (bad option, value out of range).
+# Both are covered below.
+
+
+#
+# version and symbologies
+#
+
+test encode-1.1 {version returns a dotted zint version} -body {
+  regexp {^[0-9]+\.[0-9]+\.[0-9]+$} [::tzint::Encode version]
+} -result 1
+
+test encode-1.2 {version matches the zint the backend reports in -stat} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -stat st
+  expr {[dict get $st zint] eq [::tzint::Encode version]}
+} -result 1
+
+test encode-1.3 {symbologies returns a non-empty list} -body {
+  expr {[llength [::tzint::Encode symbologies]] > 0}
+} -result 1
+
+test encode-1.4 {symbologies contains no duplicates} -body {
+  set syms [::tzint::Encode symbologies]
+  expr {[llength $syms] - [llength [lsort -unique $syms]]}
+} -result 0
+
+test encode-1.5 {symbologies contains long established names} -body {
+  set syms [::tzint::Encode symbologies]
+  set missing {}
+  foreach s {code128 code39 qrcode datamatrix pdf417 aztec maxicode ean128 upca} {
+    if {$s ni $syms} { lappend missing $s }
+  }
+  set missing
+} -result {}
+
+test encode-1.6 {symbologies added with the 2.16.0 backend are reachable} -body {
+  set syms [::tzint::Encode symbologies]
+  set missing {}
+  foreach s {ean8 ean13 dotcode hanxin ultra rmqr bc412 dxfilmedge upnqr vin
+             dpd cepnet mailmark-2d mailmark-4s upu-s10} {
+    if {$s ni $syms} { lappend missing $s }
+  }
+  set missing
+} -result {}
+
+
+#
+# bits output
+#
+
+test encode-2.1 {bits sets the named variable and returns zint status 0} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128
+} -result 0
+
+test encode-2.2 {bits result carries width, height and bits} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128
+  lsort [dict keys $b]
+} -result {bits height width}
+
+test encode-2.3 {number of bit rows equals the reported height} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128
+  expr {[llength [dict get $b bits]] == [dict get $b height]}
+} -result 1
+
+test encode-2.4 {every bit row is as long as the reported width} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128
+  set w [dict get $b width]
+  set bad 0
+  foreach row [dict get $b bits] {
+    if {[string length $row] != $w} { incr bad }
+  }
+  set bad
+} -result 0
+
+test encode-2.5 {bit rows use 1 and 0 by default} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128
+  regexp {^[01]+$} [lindex [dict get $b bits] 0]
+} -result 1
+
+test encode-2.6 {onchar and offchar replace the default characters} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -onchar X -offchar .
+  regexp {^[X.]+$} [lindex [dict get $b bits] 0]
+} -result 1
+
+test encode-2.7 {a two dimensional symbol reports more than one row} -body {
+  ::tzint::Encode bits b "Hello Tcl" -barcode qrcode -stat st
+  expr {[dict get $st rows] > 1}
+} -result 1
+
+
+#
+# module counts fixed by the respective specification
+#
+
+test encode-3.1 {EAN-13 is 95 modules wide} -body {
+  ::tzint::Encode bits b 123456789012 -barcode ean13 -stat st
+  dict get $st columns
+} -result 95
+
+test encode-3.2 {EAN-8 is 67 modules wide} -body {
+  ::tzint::Encode bits b 1234567 -barcode ean8 -stat st
+  dict get $st columns
+} -result 67
+
+test encode-3.3 {UPC-A is 95 modules wide} -body {
+  ::tzint::Encode bits b 12345678901 -barcode upca -stat st
+  dict get $st columns
+} -result 95
+
+test encode-3.4 {Code 39 encoding one character is 38 modules wide} -body {
+  ::tzint::Encode bits b A -barcode code39 -stat st
+  dict get $st columns
+} -result 38
+
+test encode-3.5 {ITF-14 is 135 modules wide} -body {
+  ::tzint::Encode bits b 1234567890123 -barcode itf14 -stat st
+  dict get $st columns
+} -result 135
+
+
+#
+# xbm output
+#
+
+test encode-4.1 {xbm starts with the symbol width define} -body {
+  ::tzint::Encode xbm x 12345678 -barcode code128
+  regexp {^#define symbol_width [0-9]+} $x
+} -result 1
+
+test encode-4.2 {xbm declares width, height and the bit array} -body {
+  ::tzint::Encode xbm x 12345678 -barcode code128
+  list [regexp {#define symbol_height [0-9]+} $x] \
+       [regexp {static unsigned char symbol_bits\[\] = \{} $x]
+} -result {1 1}
+
+test encode-4.3 {xbm width define matches the reported bitmap width} -body {
+  ::tzint::Encode xbm x 12345678 -barcode code128 -stat st
+  regexp {^#define symbol_width ([0-9]+)} $x -> w
+  expr {$w == [dict get $st width]}
+} -result 1
+
+
+#
+# eps output
+#
+
+test encode-5.1 {eps starts with the EPSF header} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128
+  lindex [split $e \n] 0
+} -result {%!PS-Adobe-3.0 EPSF-3.0}
+
+test encode-5.2 {eps names zint as its creator} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128
+  regexp "%%Creator: Zint [::tzint::Encode version]" $e
+} -result 1
+
+test encode-5.3 {eps carries a bounding box} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128
+  regexp {%%BoundingBox: [0-9]+ [0-9]+ [0-9]+ [0-9]+} $e
+} -result 1
+
+test encode-5.4 {eps is produced for a two dimensional symbol too} -body {
+  ::tzint::Encode eps e "Hello Tcl" -barcode qrcode
+  expr {[string length $e] > 0}
+} -result 1
+
+test encode-5.5 {eps bounding box keeps the width it had before the 2.16.0 backend} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128 -scale 1
+  regexp {%%BoundingBox: 0 0 ([0-9]+) } $e -> w
+  set w
+} -result 79
+
+test encode-5.6 {eps and svg agree on the symbol width} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128
+  ::tzint::Encode svg s 12345678 -barcode code128
+  regexp {%%BoundingBox: 0 0 ([0-9]+) } $e -> ew
+  regexp {<svg width="([0-9]+)"} $s -> sw
+  expr {$ew == $sw}
+} -result 1
+
+
+#
+# svg output
+#
+
+test encode-6.1 {svg starts with an xml declaration} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128
+  lindex [split $s \n] 0
+} -result {<?xml version="1.0" standalone="no"?>}
+
+test encode-6.2 {svg has an svg element and closes it} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128
+  list [regexp {<svg } $s] [string match {*</svg>} [string trimright $s]]
+} -result {1 1}
+
+test encode-6.3 {svg honours the requested foreground colour} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -fg 00ff00
+  regexp -nocase {00ff00} $s
+} -result 1
+
+# zint 2.16 draws vector output at two units per module while tzint has always
+# handed out one unit per module here; tzint compensates for that. These two
+# tests pin the resulting size down.
+test encode-6.4 {svg keeps the module width it had before the 2.16.0 backend} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -scale 1
+  regexp {<svg width="([0-9]+)"} $s -> w
+  set w
+} -result 79
+
+test encode-6.5 {svg is half as wide as the raster output} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -scale 1
+  regexp {<svg width="([0-9]+)"} $s -> w
+  ::tzint::Encode bits b 12345678 -barcode code128 -scale 1 -stat st
+  expr {[dict get $st width] == 2 * $w}
+} -result 1
+
+test encode-6.7 {vectorscale zint gives the size zint draws by itself} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -scale 1 -vectorscale zint
+  regexp {<svg width="([0-9]+)"} $s -> w
+  set w
+} -result 158
+
+test encode-6.8 {vectorscale compat is the default} -body {
+  ::tzint::Encode svg a 12345678 -barcode code128
+  ::tzint::Encode svg b 12345678 -barcode code128 -vectorscale compat
+  expr {$a eq $b}
+} -result 1
+
+test encode-6.9 {vectorscale zint is twice the compat width} -body {
+  ::tzint::Encode svg a 12345678 -barcode code128 -vectorscale compat
+  ::tzint::Encode svg b 12345678 -barcode code128 -vectorscale zint
+  regexp {<svg width="([0-9]+)"} $a -> wa
+  regexp {<svg width="([0-9]+)"} $b -> wb
+  expr {$wb == 2 * $wa}
+} -result 1
+
+test encode-6.10 {vectorscale zint matches the raster width} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -vectorscale zint
+  regexp {<svg width="([0-9]+)"} $s -> w
+  ::tzint::Encode bits b 12345678 -barcode code128 -stat st
+  expr {$w == [dict get $st width]}
+} -result 1
+
+test encode-6.11 {vectorscale applies to eps as well} -body {
+  ::tzint::Encode eps e 12345678 -barcode code128 -vectorscale zint
+  regexp {%%BoundingBox: 0 0 ([0-9]+) } $e -> w
+  set w
+} -result 158
+
+test encode-6.12 {vectorscale leaves the raster output alone} -body {
+  ::tzint::Encode bits a 12345678 -barcode code128 -vectorscale compat -stat sa
+  ::tzint::Encode bits b 12345678 -barcode code128 -vectorscale zint -stat sb
+  expr {[dict get $sa width] == [dict get $sb width]
+     && [dict get $sa height] == [dict get $sb height]}
+} -result 1
+
+test encode-6.13 {an unknown vectorscale value is rejected} -body {
+  ::tzint::Encode svg s 12345678 -barcode code128 -vectorscale bogus
+} -returnCodes error -result {bad -vectorscale "bogus": must be compat or zint}
+
+test encode-6.6 {svg width scales with the scale option} -body {
+  set widths {}
+  foreach sc {0.5 1 2 4} {
+    ::tzint::Encode svg s 12345678 -barcode code128 -scale $sc
+    regexp {<svg width="([0-9]+)"} $s -> w
+    lappend widths $w
+  }
+  set widths
+} -result {40 79 158 316}
+
+
+#
+# file output
+#
+
+test encode-7.1 {file writes an svg file} -setup {
+  set out [file join [temporaryDirectory] tzint-encode-7-1.svg]
+  file delete -force $out
+} -body {
+  set rc [::tzint::Encode file $out 12345678 -barcode code128]
+  list $rc [file exists $out] [expr {[file size $out] > 0}]
+} -cleanup {
+  file delete -force $out
+} -result {0 1 1}
+
+test encode-7.2 {file written to disk matches the in-memory svg} -setup {
+  set out [file join [temporaryDirectory] tzint-encode-7-2.svg]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128
+  ::tzint::Encode svg s 12345678 -barcode code128
+  set fh [open $out rb]
+  set fromFile [read $fh]
+  close $fh
+  expr {[string trim $fromFile] eq [string trim $s]}
+} -cleanup {
+  file delete -force $out
+} -result 1
+
+test encode-7.5 {vectorscale reaches file output too} -setup {
+  set out1 [file join [temporaryDirectory] tzint-encode-7-5a.svg]
+  set out2 [file join [temporaryDirectory] tzint-encode-7-5b.svg]
+  file delete -force $out1 $out2
+} -body {
+  ::tzint::Encode file $out1 12345678 -barcode code128
+  ::tzint::Encode file $out2 12345678 -barcode code128 -vectorscale zint
+  set widths {}
+  foreach f [list $out1 $out2] {
+    set fh [open $f rb]
+    set content [read $fh]
+    close $fh
+    regexp {<svg width="([0-9]+)"} $content -> w
+    lappend widths $w
+  }
+  set widths
+} -cleanup {
+  file delete -force $out1 $out2
+} -result {79 158}
+
+test encode-7.4 {file output of a raster format is not scaled like vector output} -setup {
+  set out [file join [temporaryDirectory] tzint-encode-7-4.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -stat st
+  # the raster bitmap keeps its own size, only vector output is halved
+  expr {[dict get $st width] == 158}
+} -cleanup {
+  file delete -force $out
+} -result 1
+
+test encode-7.3 {file writes an eps file} -setup {
+  set out [file join [temporaryDirectory] tzint-encode-7-3.eps]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128
+  set fh [open $out rb]
+  set head [gets $fh]
+  close $fh
+  set head
+} -cleanup {
+  file delete -force $out
+} -result {%!PS-Adobe-3.0 EPSF-3.0}
+
+
+#
+# options
+#
+
+test encode-8.1 {scale enlarges the rendered bitmap} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -scale 1 -stat s1
+  ::tzint::Encode bits b 12345678 -barcode code128 -scale 3 -stat s3
+  expr {[dict get $s3 width] > [dict get $s1 width]}
+} -result 1
+
+test encode-8.2 {height changes the rendered bitmap height} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -height 30 -stat s1
+  ::tzint::Encode bits b 12345678 -barcode code128 -height 90 -stat s2
+  expr {[dict get $s2 height] > [dict get $s1 height]}
+} -result 1
+
+test encode-8.3 {whitespace widens the symbol} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -whitespace 0 -stat s1
+  ::tzint::Encode bits b 12345678 -barcode code128 -whitespace 10 -stat s2
+  expr {[dict get $s2 width] > [dict get $s1 width]}
+} -result 1
+
+test encode-8.4 {border and box enlarge the symbol} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -stat s1
+  ::tzint::Encode bits b 12345678 -barcode code128 -box 1 -border 5 -stat s2
+  expr {[dict get $s2 width] > [dict get $s1 width]
+     && [dict get $s2 height] > [dict get $s1 height]}
+} -result 1
+
+test encode-8.5 {notext removes the human readable text} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -notext 0 -stat s1
+  ::tzint::Encode bits b 12345678 -barcode code128 -notext 1 -stat s2
+  expr {[dict get $s2 height] < [dict get $s1 height]}
+} -result 1
+
+test encode-8.6 {rotate by 90 degrees swaps width and height} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -stat s1
+  ::tzint::Encode bits b 12345678 -barcode code128 -rotate 90 -stat s2
+  expr {[dict get $s2 width] == [dict get $s1 height]
+     && [dict get $s2 height] == [dict get $s1 width]}
+} -result 1
+
+test encode-8.7 {square forces a square data matrix} -body {
+  ::tzint::Encode bits b "Hello Tcl" -barcode datamatrix -square 1 -stat st
+  expr {[dict get $st rows] == [dict get $st columns]}
+} -result 1
+
+test encode-8.8 {binary format accepts data unicode mode rejects} -body {
+  ::tzint::Encode bits b "AB" -barcode code128 -format binary
+} -result 0
+
+test encode-8.9 {gs1 format encodes an application identifier} -body {
+  ::tzint::Encode bits b {[01]12345678901231} -barcode ean128 -format gs1
+} -result 0
+
+test encode-8.10 {foreground and background are accepted as 6 hex digits} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -fg 112233 -bg ddeeff
+} -result 0
+
+test encode-8.11 {colours may be given with a leading hash} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -fg #112233
+} -result 0
+
+test encode-8.12 {stat reports the documented keys} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -stat st
+  lsort [dict keys $st]
+} -result {columns error height rows width zint}
+
+
+#
+# errors detected by tzint itself
+#
+
+test encode-9.1 {unknown symbology is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode nosuchsymbology
+} -returnCodes error -match glob -result {bad -symbology "nosuchsymbology": must be *}
+
+test encode-9.2 {unknown option is rejected} -body {
+  ::tzint::Encode bits b 12345678 -nosuchoption 1
+} -returnCodes error -match glob -result {bad -option "-nosuchoption": must be *}
+
+test encode-9.3 {unknown command is rejected} -body {
+  ::tzint::Encode nosuchcommand b 12345678
+} -returnCodes error -match glob -result {bad command "nosuchcommand": must be *}
+
+test encode-9.4 {scale below the lower limit is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -scale 0.001
+} -returnCodes error -result {scale below 0.01}
+
+test encode-9.5 {height out of range is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -height 0
+} -returnCodes error -result {height out of range}
+
+test encode-9.6 {border out of range is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -border -1
+} -returnCodes error -result {border out of range}
+
+test encode-9.7 {cols out of range is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode pdf417 -cols 99
+} -returnCodes error -result {cols out of range}
+
+test encode-9.8 {vers out of range is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode qrcode -vers 99
+} -returnCodes error -result {vers out of range}
+
+test encode-9.9 {security out of range is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode pdf417 -security 99
+} -returnCodes error -result {security out of range}
+
+test encode-9.10 {mode out of range is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode maxicode -mode 99
+} -returnCodes error -result {mode out of range}
+
+test encode-9.11 {a colour of the wrong length is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -fg 12345
+} -returnCodes error -result {foreground must have 6 or 8 hex digits}
+
+test encode-9.12 {a background colour of the wrong length is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -bg 12345
+} -returnCodes error -result {background must have 6 or 8 hex digits}
+
+test encode-9.13 {a non numeric scale is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -scale notanumber
+} -returnCodes error -match glob -result {expected floating-point number*}
+
+test encode-9.14 {calling without arguments is rejected} -body {
+  ::tzint::Encode
+} -returnCodes error -match glob -result {wrong # args*}
+
+
+#
+# errors reported by zint through the return value
+#
+
+test encode-10.1 {data invalid for the symbology returns a non zero status} -body {
+  expr {[::tzint::Encode bits b ABCDEFGHIJKL -barcode ean13 -stat st] != 0}
+} -result 1
+
+test encode-10.2 {the zint message is passed on in stat} -body {
+  ::tzint::Encode bits b ABCDEFGHIJKL -barcode ean13 -stat st
+  expr {[string length [dict get $st error]] > 0}
+} -result 1
+
+test encode-10.3 {valid data leaves the stat error message empty} -body {
+  ::tzint::Encode bits b 123456789012 -barcode ean13 -stat st
+  dict get $st error
+} -result {}
+
+
+#
+# warnings and ECI
+#
+# zint answers with 1 to 4 when it produced the symbol but has something to say,
+# and from 5 on when it produced nothing. A warning has to keep the output.
+#
+
+test encode-15.1 {a warning still delivers the symbol} -body {
+  # the euro sign forces zint out of its default character set
+  set rc [::tzint::Encode bits b "Betrag 12,34 EUR €" -barcode qrcode -stat st]
+  list [expr {$rc > 0 && $rc < 5}] [dict exists $b bits] \
+       [expr {[llength [dict get $b bits]] > 0}]
+} -result {1 1 1}
+
+test encode-15.2 {the warning message is passed on in stat} -body {
+  ::tzint::Encode bits b "Betrag 12,34 EUR €" -barcode qrcode -stat st
+  string match "Warning*" [dict get $st error]
+} -result 1
+
+test encode-15.3 {a warning delivers the vector output as well} -body {
+  set rc [::tzint::Encode svg s "Betrag 12,34 EUR €" -barcode qrcode]
+  list [expr {$rc > 0 && $rc < 5}] [expr {[string length $s] > 0}] \
+       [string match {*</svg>} [string trimright $s]]
+} -result {1 1 1}
+
+test encode-15.4 {a warning delivers a written file as well} -setup {
+  set out [file join [temporaryDirectory] tzint-15-4.svg]
+  file delete -force $out
+} -body {
+  set rc [::tzint::Encode file $out "Betrag 12,34 EUR €" -barcode qrcode]
+  list [expr {$rc > 0 && $rc < 5}] [file exists $out] [expr {[file size $out] > 0}]
+} -cleanup {
+  file delete -force $out
+} -result {1 1 1}
+
+test encode-15.5 {an error still delivers nothing} -body {
+  set b {}
+  set rc [::tzint::Encode bits b ABCDEFGHIJKL -barcode ean13 -stat st]
+  list [expr {$rc >= 5}] [expr {$b eq ""}] [string match "Error*" [dict get $st error]]
+} -result {1 1 1}
+
+test encode-15.6 {eci forces the character set and silences the warning} -body {
+  set data "Betrag 12,34 EUR €"
+  set without [::tzint::Encode bits b $data -barcode qrcode]
+  set with [::tzint::Encode bits b $data -barcode qrcode -eci 26]
+  list [expr {$without > 0 && $without < 5}] $with
+} -result {1 0}
+
+test encode-15.7 {an eci out of range is rejected} -body {
+  set accepted {}
+  foreach v {-1 1000000} {
+    if {![catch {::tzint::Encode bits b 12345678 -barcode qrcode -eci $v}]} {
+      lappend accepted $v
+    }
+  }
+  set accepted
+} -result {}
+
+test encode-15.8 {the eci codes zint excludes come back as an error} -body {
+  set bad {}
+  foreach v {1 2 14 19} {
+    if {[::tzint::Encode bits b 12345678 -barcode qrcode -eci $v] < 5} {
+      lappend bad $v
+    }
+  }
+  set bad
+} -result {}
+
+test encode-15.9 {a non numeric eci is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode qrcode -eci notanumber
+} -returnCodes error -match glob -result {expected integer*}
+
+
+#
+# every symbology in the table can be driven
+#
+
+# Composite symbologies need their linear part in -primary and are covered by
+# encode-11.4 instead.
+test encode-11.1 {every non composite symbology encodes at least one sample input} -body {
+  set candidates {
+    123456789012 1234567 12345678901234567890 ABC123 A 12 12345
+    1234567890123456789012345678901 0123456789 12345678 12345678901
+    A12345B 1234565 77 1M8GDM9AXKP042788 EE876543216CA
+    21B2254800659JW5O9QA6Y 0071106016325329483751792764
+    "012100123412345678AB19XY1A 0" {[01]12345678901231}
+  }
+  set bad {}
+  foreach sym [::tzint::Encode symbologies] {
+    if {[string match *-cc $sym]} continue
+    set done 0
+    foreach d $candidates {
+      if {![catch {::tzint::Encode bits b $d -barcode $sym} rc] && $rc == 0} {
+        set done 1
+        break
+      }
+    }
+    if {!$done} { lappend bad $sym }
+  }
+  set bad
+} -result {}
+
+# Data verified against zint 2.16.0; the composite symbologies carry their
+# linear part in -primary and the 2D part as the encoded data.
+test encode-11.2 {symbologies added with 2.16.0 encode their sample input} -body {
+  set samples {
+    ean8         1234567                       {}
+    ean13        123456789012                  {}
+    eanx-chk     1234567890128                 {}
+    upca-chk     123456789012                  {}
+    upce-chk     1234565                       {}
+    ean-2addon   12                            {}
+    ean-5addon   12345                         {}
+    cepnet       12345678                      {}
+    vin          1M8GDM9AXKP042788             {}
+    dpd          0071106016325329483751792764  {}
+    dotcode      ABC123                        {}
+    hanxin       ABC123                        {}
+    ultra        ABC123                        {}
+    rmqr         ABC123                        {}
+    bc412        ABC1234                       {}
+    dxfilmedge   77                            {}
+    upu-s10      EE876543216CA                 {}
+    mailmark-4s  21B2254800659JW5O9QA6Y        {}
+    upnqr        ABC                           {}
+  }
+  set bad {}
+  foreach {sym data opts} $samples {
+    if {[catch {::tzint::Encode bits b $data -barcode $sym {*}$opts} rc] || $rc != 0} {
+      lappend bad $sym
+    }
+  }
+  set bad
+} -result {}
+
+test encode-11.3 {mailmark 2d encodes its sample input} -body {
+  ::tzint::Encode bits b "012100123412345678AB19XY1A 0" -barcode mailmark-2d
+} -result 0
+
+test encode-11.4 {every composite symbology encodes with a primary message} -body {
+  set primaries {
+    eanx-cc          123456789012
+    ean128-cc        {[01]12345678901231}
+    rss14-cc         123456789012
+    rss-ltd-cc       123456789012
+    rss-exp-cc       {[01]12345678901231}
+    upca-cc          123456789012
+    upce-cc          1234567
+    rss14stack-cc    123456789012
+    rss14-omni-cc    123456789012
+    rss-expstack-cc  {[01]12345678901231}
+    ean8-cc          1234567
+    ean13-cc         123456789012
+  }
+  set bad {}
+  foreach sym [::tzint::Encode symbologies] {
+    if {![string match *-cc $sym]} continue
+    if {![dict exists $primaries $sym]} {
+      lappend bad "$sym (no sample)"
+      continue
+    }
+    if {[catch {::tzint::Encode bits b {[21]A12345678} -barcode $sym \
+                  -primary [dict get $primaries $sym]} rc] || $rc != 0} {
+      lappend bad $sym
+    }
+  }
+  set bad
+} -result {}
+
+test encode-11.5 {every symbology can be rendered as svg} -body {
+  set samples {
+    code128 ABC123  code39 ABC123  qrcode ABC123  datamatrix ABC123
+    pdf417 ABC123   aztec ABC123   maxicode Secondary
+    dotcode ABC123  hanxin ABC123  ultra ABC123   rmqr ABC123
+    bc412 ABC1234   dxfilmedge 77
+  }
+  set bad {}
+  foreach {sym data} $samples {
+    if {[catch {::tzint::Encode svg s $data -barcode $sym} rc] || $rc != 0
+        || [string length $s] == 0} {
+      lappend bad $sym
+    }
+  }
+  set bad
+} -result {}
+
+#
+# file output formats
+#
+# zint picks the format from the file name extension. Raster formats carry the
+# bitmap and fill in -stat, vector formats do not. Reads the PNG header rather
+# than trusting the reported size.
+#
+
+proc pngSize {path} {
+  set fh [open $path rb]
+  set head [read $fh 24]
+  close $fh
+  if {[string range $head 1 3] ne "PNG"} { return "not a png" }
+  binary scan [string range $head 16 23] IuIu w h
+  return [list $w $h]
+}
+
+proc readFileBinary {path} {
+  set fh [open $path rb]
+  set content [read $fh]
+  close $fh
+  return $content
+}
+
+proc writeSymbol {ext args} {
+  set out [file join [temporaryDirectory] tzint-fmt.$ext]
+  file delete -force $out
+  set rc [catch {::tzint::Encode file $out 12345678 -barcode code128 {*}$args} status]
+  set size [expr {[file exists $out] ? [file size $out] : -1}]
+  set result [list $rc $status $size $out]
+  return $result
+}
+
+test encode-12.1 {png is written and its header carries the bitmap size} -setup {
+  set out [file join [temporaryDirectory] tzint-12-1.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -stat st
+  list [pngSize $out] [dict get $st width] [dict get $st height]
+} -cleanup {
+  file delete -force $out
+} -result {{158 116} 158 116}
+
+test encode-12.2 {png honours the scale option} -setup {
+  set out [file join [temporaryDirectory] tzint-12-2.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -scale 2
+  lindex [pngSize $out] 0
+} -cleanup {
+  file delete -force $out
+} -result 316
+
+test encode-12.3 {every raster format zint supports is written} -body {
+  set bad {}
+  foreach ext {png gif bmp pcx tif} {
+    lassign [writeSymbol $ext] rc status size out
+    if {$rc || $status != 0 || $size <= 0} { lappend bad $ext }
+    file delete -force $out
+  }
+  set bad
+} -result {}
+
+test encode-12.4 {every vector format zint supports is written} -body {
+  set bad {}
+  foreach ext {svg eps emf} {
+    lassign [writeSymbol $ext] rc status size out
+    if {$rc || $status != 0 || $size <= 0} { lappend bad $ext }
+    file delete -force $out
+  }
+  set bad
+} -result {}
+
+test encode-12.5 {an unsupported extension reports a status and writes nothing} -body {
+  lassign [writeSymbol jpg] rc status size out
+  list $rc [expr {$status != 0}] $size
+} -result {0 1 -1}
+
+test encode-12.6 {raster output fills in stat, vector output does not} -setup {
+  set png [file join [temporaryDirectory] tzint-12-6.png]
+  set svg [file join [temporaryDirectory] tzint-12-6.svg]
+  file delete -force $png $svg
+} -body {
+  ::tzint::Encode file $png 12345678 -barcode code128 -stat sr
+  ::tzint::Encode file $svg 12345678 -barcode code128 -stat sv
+  list [expr {[dict get $sr width] > 0}] [dict get $sv width]
+} -cleanup {
+  file delete -force $png $svg
+} -result {1 0}
+
+# The txt "format" changed with the 2.16.0 backend: zint 2.4.4 wrote the module
+# matrix as readable 0/1 rows, 2.16.0 writes a hex dump of the encoded data.
+# Use the bits command for a module matrix.
+test encode-12.7 {txt output is a hex dump since the 2.16.0 backend} -setup {
+  set out [file join [temporaryDirectory] tzint-12-7.txt]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128
+  set fh [open $out r]
+  set content [read $fh]
+  close $fh
+  regexp {^([0-9A-F]{2} )+[0-9A-F]{2}\s*$} $content
+} -cleanup {
+  file delete -force $out
+} -result 1
+
+test encode-12.8 {bits still delivers the module matrix txt used to hold} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128
+  regexp {^[01]+$} [lindex [dict get $b bits] 0]
+} -result 1
+
+
+#
+# colours
+#
+
+test encode-13.1 {colours are accepted in every supported length} -body {
+  set bad {}
+  foreach c {f 3ab ff0000 3aba ff000080} {
+    if {[catch {::tzint::Encode bits b 12345678 -barcode code128 -fg $c} rc]
+        || $rc != 0} {
+      lappend bad $c
+    }
+  }
+  set bad
+} -result {}
+
+test encode-13.2 {a leading hash is accepted for every length} -body {
+  set bad {}
+  foreach c {#f #3ab #ff0000 #3aba #ff000080} {
+    if {[catch {::tzint::Encode bits b 12345678 -barcode code128 -fg $c} rc]
+        || $rc != 0} {
+      lappend bad $c
+    }
+  }
+  set bad
+} -result {}
+
+test encode-13.3 {colours of an unsupported length are rejected} -body {
+  set accepted {}
+  foreach c {12 12345 1234567 123456789} {
+    if {![catch {::tzint::Encode bits b 12345678 -barcode code128 -fg $c}]} {
+      lappend accepted $c
+    }
+  }
+  set accepted
+} -result {}
+
+test encode-13.6 {colours are read in either case} -body {
+  set bad {}
+  foreach c {F 3AB FF0000 3ABA FF000080} {
+    if {[catch {::tzint::Encode bits b 12345678 -barcode code128 -fg $c} rc]
+        || $rc != 0} {
+      lappend bad $c
+    }
+  }
+  set bad
+} -result {}
+
+test encode-13.7 {anything but a hex digit is rejected} -body {
+  set accepted {}
+  foreach c {z zzz zzzzzz ff00gg 12345g "ff 000" ff-000} {
+    if {![catch {::tzint::Encode bits b 12345678 -barcode code128 -fg $c}]} {
+      lappend accepted $c
+    }
+  }
+  set accepted
+} -result {}
+
+test encode-13.8 {an empty colour is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -fg {}
+} -returnCodes error -result {foreground must have 6 or 8 hex digits}
+
+test encode-13.9 {a hash on its own is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -bg #
+} -returnCodes error -result {background must have 6 or 8 hex digits}
+
+test encode-13.4 {an alpha channel puts a transparency chunk into the png} -setup {
+  set opaque [file join [temporaryDirectory] tzint-13-4a.png]
+  set alpha [file join [temporaryDirectory] tzint-13-4b.png]
+  file delete -force $opaque $alpha
+} -body {
+  ::tzint::Encode file $opaque 12345678 -barcode code128 -bg ffffff
+  ::tzint::Encode file $alpha 12345678 -barcode code128 -bg ffffff00
+  set found {}
+  foreach f [list $opaque $alpha] {
+    set fh [open $f rb]
+    set content [read $fh]
+    close $fh
+    lappend found [expr {[string first tRNS $content] >= 0}]
+  }
+  set found
+} -cleanup {
+  file delete -force $opaque $alpha
+} -result {0 1}
+
+test encode-13.5 {the alpha short form is the long form doubled} -setup {
+  set short [file join [temporaryDirectory] tzint-13-5a.png]
+  set long [file join [temporaryDirectory] tzint-13-5b.png]
+  file delete -force $short $long
+} -body {
+  ::tzint::Encode file $short 12345678 -barcode code128 -fg 3aba
+  ::tzint::Encode file $long 12345678 -barcode code128 -fg 33aabbaa
+  set fh [open $short rb]; set a [read $fh]; close $fh
+  set fh [open $long rb]; set b [read $fh]; close $fh
+  expr {$a eq $b}
+} -cleanup {
+  file delete -force $short $long
+} -result 1
+
+#
+# output resolution
+#
+# zint keeps the resolution as dots per mm and writes it to BMP, EMF, PCX, PNG
+# and TIF. In a PNG it lands in the pHYs chunk as pixels per metre.
+#
+
+proc pngResolution {path} {
+  set fh [open $path rb]
+  set content [read $fh]
+  close $fh
+  set i [string first pHYs $content]
+  if {$i < 0} { return none }
+  binary scan [string range $content [expr {$i + 4}] [expr {$i + 11}]] IuIu x y
+  return [list $x $y]
+}
+
+test encode-14.1 {without a resolution the png carries no pHYs chunk} -setup {
+  set out [file join [temporaryDirectory] tzint-14-1.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result none
+
+test encode-14.2 {dpi is written as pixels per metre} -setup {
+  set out [file join [temporaryDirectory] tzint-14-2.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -dpi 300
+  # 300 dpi is 300 / 25.4 dots per mm, that is 11811 pixels per metre
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result {11811 11811}
+
+test encode-14.3 {dpmm is passed through unconverted} -setup {
+  set out [file join [temporaryDirectory] tzint-14-3.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -dpmm 12
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result {12000 12000}
+
+test encode-14.4 {a resolution of zero leaves the chunk out again} -setup {
+  set out [file join [temporaryDirectory] tzint-14-4.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -dpi 0
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result none
+
+test encode-14.5 {the last of the two options wins} -setup {
+  set out [file join [temporaryDirectory] tzint-14-5.png]
+  file delete -force $out
+} -body {
+  ::tzint::Encode file $out 12345678 -barcode code128 -dpi 300 -dpmm 12
+  pngResolution $out
+} -cleanup {
+  file delete -force $out
+} -result {12000 12000}
+
+test encode-14.6 {the resolution reaches every format that carries one} -body {
+  set bad {}
+  foreach ext {png bmp pcx tif emf} {
+    lassign [writeSymbol $ext] rc status size plain
+    set plainContent [readFileBinary $plain]
+    file delete -force $plain
+    lassign [writeSymbol $ext -dpi 600] rc status size withDpi
+    set dpiContent [readFileBinary $withDpi]
+    file delete -force $withDpi
+    if {$plainContent eq $dpiContent} { lappend bad $ext }
+  }
+  set bad
+} -result {}
+
+test encode-14.7 {formats without a resolution field are unaffected} -body {
+  set changed {}
+  foreach ext {gif svg eps} {
+    lassign [writeSymbol $ext] rc status size plain
+    set plainContent [readFileBinary $plain]
+    file delete -force $plain
+    lassign [writeSymbol $ext -dpi 600] rc status size withDpi
+    set dpiContent [readFileBinary $withDpi]
+    file delete -force $withDpi
+    if {$plainContent ne $dpiContent} { lappend changed $ext }
+  }
+  set changed
+} -result {}
+
+test encode-14.8 {a resolution out of range is rejected} -body {
+  set accepted {}
+  foreach {opt val} {-dpi -1 -dpi 25401 -dpmm -1 -dpmm 1001} {
+    if {![catch {::tzint::Encode bits b 12345678 -barcode code128 $opt $val}]} {
+      lappend accepted "$opt $val"
+    }
+  }
+  set accepted
+} -result {}
+
+test encode-14.9 {the range limits themselves are accepted} -body {
+  set rejected {}
+  foreach {opt val} {-dpi 0 -dpi 25400 -dpmm 0 -dpmm 1000} {
+    if {[catch {::tzint::Encode bits b 12345678 -barcode code128 $opt $val}]} {
+      lappend rejected "$opt $val"
+    }
+  }
+  set rejected
+} -result {}
+
+test encode-14.10 {a non numeric resolution is rejected} -body {
+  ::tzint::Encode bits b 12345678 -barcode code128 -dpi notanumber
+} -returnCodes error -match glob -result {expected floating-point number*}
+
+# cleanup
+rename pngResolution {}
+rename pngSize {}
+rename writeSymbol {}
+rename readFileBinary {}
+::tcltest::cleanupTests
+return

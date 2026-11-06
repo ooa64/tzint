@@ -3,7 +3,7 @@
             libzint from the maintainer Robin Stuart
 	    (backend license BSD-3 since May 2013; see also LICENSE.zint)
 
-    Copyright (C) 2014-2019 Alexander Schoepe, Bochum, DE, <alx.tcl@sowaswie.de>
+    Copyright (C) 2014-2026 Alexander Schoepe, Bochum, DE, <alx.tcl(at)sowaswie.de>
                             Joerg Mehring, Bochum, DE <j.mehring@bjmehring.de>
     All rights reserved.
 
@@ -45,204 +45,171 @@
 
 #include <tcl.h>
 #include "zint.h"
+#include "zintconfig.h"
+#include "manifest.h"
 
 #ifndef FALSE
 #define FALSE 0
 #define TRUE (!FALSE)
 #endif
 
-static char rcs[] = "@(#)tzint.c $Revision: 1.2 $ $Date: 2017/04/18 18:00:09 $ (BSD 3 License) Alexander Schoepe, Joerg Mehring, Bochum, DE";
+// zint reports its own version in zintconfig.h; deriving the string from there
+// keeps it correct across backend updates instead of repeating it in configure.ac
+#define TZINT_STR1(x) #x
+#define TZINT_STR(x) TZINT_STR1(x)
+#define ZINT_VERSION TZINT_STR(ZINT_VERSION_MAJOR) "." TZINT_STR(ZINT_VERSION_MINOR) "." TZINT_STR(ZINT_VERSION_RELEASE)
 
-static char *symbols[] = {
-  "code11",
-  "c25matrix",
-  "c25inter",
-  "c25iata",
-  "c25logic",
-  "c25ind",
-  "code39",
-  "excode39",
-  "eanx",
-  "ean128",
-  "codabar",
-  "code128",
-  "dpleit",
-  "dpident",
-  "code16k",
-  "code49",
-  "code93",
-  "flat",
-  "rss14",
-  "rss-ltd",
-  "rss-exp",
-  "telepen",
-  "upca",
-  "upce",
-  "postnet",
-  "msi-plessey",
-  "fim",
-  "logmars",
-  "pharma",
-  "pzn",
-  "pharma-two",
-  "pdf417",
-  "pdf417trunc",
-  "maxicode",
-  "qrcode",
-  "code128b",
-  "auspost",
-  "ausreply",
-  "ausroute",
-  "ausredirect",
-  "isbnx",
-  "rm4scc",
-  "datamatrix",
-  "ean14",
-  "codablockf",
-  "nve18",
-  "japanpost",
-  "koreapost",
-  "rss14stack",
-  "rss14stack-omni",
-  "rss-expstack",
-  "planet",
-  "micropdf417",
-  "onecode",
-  "plessey",
-  "telepen-num",
-  "itf14",
-  "kix",
-  "aztec",
-  "daft",
-  "microqr",
-  "hibc-128",
-  "hibc-39",
-  "hibc-dm",
-  "hibc-qr",
-  "hibc-pdf",
-  "hibc-micpdf",
-  "hibc-blockf",
-  "hibc-aztec",
-  "azrune",
-  "code32",
-  "eanx-cc",
-  "ean128-cc",
-  "rss14-cc",
-  "rss-ltd-cc",
-  "rss-exp-cc",
-  "upca-cc",
-  "upce-cc",
-  "rss14stack-cc",
-  "rss14-omni-cc",
-  "rss-expstack-cc",
-  "channel",
-  "codeone",
-  "gridmatrix",
-  NULL
-};
 
-static int symbolNo[] = {
-  BARCODE_CODE11,
-  BARCODE_C25MATRIX,
-  BARCODE_C25INTER,
-  BARCODE_C25IATA,
-  BARCODE_C25LOGIC,
-  BARCODE_C25IND,
-  BARCODE_CODE39,
-  BARCODE_EXCODE39,
-  BARCODE_EANX,
-  BARCODE_EAN128,
-  BARCODE_CODABAR,
-  BARCODE_CODE128,
-  BARCODE_DPLEIT,
-  BARCODE_DPIDENT,
-  BARCODE_CODE16K,
-  BARCODE_CODE49,
-  BARCODE_CODE93,
-  BARCODE_FLAT,
-  BARCODE_RSS14,
-  BARCODE_RSS_LTD,
-  BARCODE_RSS_EXP,
-  BARCODE_TELEPEN,
-  BARCODE_UPCA,
-  BARCODE_UPCE,
-  BARCODE_POSTNET,
-  BARCODE_MSI_PLESSEY,
-  BARCODE_FIM,
-  BARCODE_LOGMARS,
-  BARCODE_PHARMA,
-  BARCODE_PZN,
-  BARCODE_PHARMA_TWO,
-  BARCODE_PDF417,
-  BARCODE_PDF417TRUNC,
-  BARCODE_MAXICODE,
-  BARCODE_QRCODE,
-  BARCODE_CODE128B,
-  BARCODE_AUSPOST,
-  BARCODE_AUSREPLY,
-  BARCODE_AUSROUTE,
-  BARCODE_AUSREDIRECT,
-  BARCODE_ISBNX,
-  BARCODE_RM4SCC,
-  BARCODE_DATAMATRIX,
-  BARCODE_EAN14,
-  BARCODE_CODABLOCKF,
-  BARCODE_NVE18,
-  BARCODE_JAPANPOST,
-  BARCODE_KOREAPOST,
-  BARCODE_RSS14STACK,
-  BARCODE_RSS14STACK_OMNI,
-  BARCODE_RSS_EXPSTACK,
-  BARCODE_PLANET,
-  BARCODE_MICROPDF417,
-  BARCODE_ONECODE,
-  BARCODE_PLESSEY,
-  BARCODE_TELEPEN_NUM,
-  BARCODE_ITF14,
-  BARCODE_KIX,
-  BARCODE_AZTEC,
-  BARCODE_DAFT,
-  BARCODE_MICROQR,
-  BARCODE_HIBC_128,
-  BARCODE_HIBC_39,
-  BARCODE_HIBC_DM,
-  BARCODE_HIBC_QR,
-  BARCODE_HIBC_PDF,
-  BARCODE_HIBC_MICPDF,
-  BARCODE_HIBC_BLOCKF,
-  BARCODE_HIBC_AZTEC,
-  BARCODE_AZRUNE,
-  BARCODE_CODE32,
-  BARCODE_EANX_CC,
-  BARCODE_EAN128_CC,
-  BARCODE_RSS14_CC,
-  BARCODE_RSS_LTD_CC,
-  BARCODE_RSS_EXP_CC,
-  BARCODE_UPCA_CC,
-  BARCODE_UPCE_CC,
-  BARCODE_RSS14STACK_CC,
-  BARCODE_RSS14_OMNI_CC,
-  BARCODE_RSS_EXPSTACK_CC,
-  BARCODE_CHANNEL,
-  BARCODE_CODEONE,
-  BARCODE_GRIDMATRIX,
-  0
+// Name and zint symbology in one table, ordered by zint's own symbology number.
+// Names present before the 2.16.0 backend update are kept unchanged; entries
+// marked "new in 2.16.0" became reachable with that update.
+static const struct {
+  const char *name;
+  int symbology;
+} symbolTable[] = {
+  { "code11",		BARCODE_CODE11 },
+  { "c25matrix",	BARCODE_C25MATRIX },
+  { "c25inter",		BARCODE_C25INTER },
+  { "c25iata",		BARCODE_C25IATA },
+  { "c25logic",		BARCODE_C25LOGIC },
+  { "c25ind",		BARCODE_C25IND },
+  { "code39",		BARCODE_CODE39 },
+  { "excode39",		BARCODE_EXCODE39 },
+  { "ean8",		BARCODE_EAN8 },			// new in 2.16.0
+  { "ean-2addon",	BARCODE_EAN_2ADDON },		// new in 2.16.0
+  { "ean-5addon",	BARCODE_EAN_5ADDON },		// new in 2.16.0
+  { "eanx",		BARCODE_EANX },
+  { "eanx-chk",		BARCODE_EANX_CHK },		// new in 2.16.0
+  { "ean13",		BARCODE_EAN13 },		// new in 2.16.0
+  { "ean128",		BARCODE_EAN128 },
+  { "codabar",		BARCODE_CODABAR },
+  { "code128",		BARCODE_CODE128 },
+  { "dpleit",		BARCODE_DPLEIT },
+  { "dpident",		BARCODE_DPIDENT },
+  { "code16k",		BARCODE_CODE16K },
+  { "code49",		BARCODE_CODE49 },
+  { "code93",		BARCODE_CODE93 },
+  { "flat",		BARCODE_FLAT },
+  { "rss14",		BARCODE_RSS14 },
+  { "rss-ltd",		BARCODE_RSS_LTD },
+  { "rss-exp",		BARCODE_RSS_EXP },
+  { "telepen",		BARCODE_TELEPEN },
+  { "upca",		BARCODE_UPCA },
+  { "upca-chk",		BARCODE_UPCA_CHK },		// new in 2.16.0
+  { "upce",		BARCODE_UPCE },
+  { "upce-chk",		BARCODE_UPCE_CHK },		// new in 2.16.0
+  { "postnet",		BARCODE_POSTNET },
+  { "msi-plessey",	BARCODE_MSI_PLESSEY },
+  { "fim",		BARCODE_FIM },
+  { "logmars",		BARCODE_LOGMARS },
+  { "pharma",		BARCODE_PHARMA },
+  { "pzn",		BARCODE_PZN },
+  { "pharma-two",	BARCODE_PHARMA_TWO },
+  { "cepnet",		BARCODE_CEPNET },		// new in 2.16.0
+  { "pdf417",		BARCODE_PDF417 },
+  { "pdf417trunc",	BARCODE_PDF417TRUNC },
+  { "maxicode",		BARCODE_MAXICODE },
+  { "qrcode",		BARCODE_QRCODE },
+  { "code128b",		BARCODE_CODE128B },
+  { "auspost",		BARCODE_AUSPOST },
+  { "ausreply",		BARCODE_AUSREPLY },
+  { "ausroute",		BARCODE_AUSROUTE },
+  { "ausredirect",	BARCODE_AUSREDIRECT },
+  { "isbnx",		BARCODE_ISBNX },
+  { "rm4scc",		BARCODE_RM4SCC },
+  { "datamatrix",	BARCODE_DATAMATRIX },
+  { "ean14",		BARCODE_EAN14 },
+  { "vin",		BARCODE_VIN },			// new in 2.16.0
+  { "codablockf",	BARCODE_CODABLOCKF },
+  { "nve18",		BARCODE_NVE18 },
+  { "japanpost",	BARCODE_JAPANPOST },
+  { "koreapost",	BARCODE_KOREAPOST },
+  { "rss14stack",	BARCODE_RSS14STACK },
+  { "rss14stack-omni",	BARCODE_RSS14STACK_OMNI },
+  { "rss-expstack",	BARCODE_RSS_EXPSTACK },
+  { "planet",		BARCODE_PLANET },
+  { "micropdf417",	BARCODE_MICROPDF417 },
+  { "onecode",		BARCODE_ONECODE },
+  { "plessey",		BARCODE_PLESSEY },
+  { "telepen-num",	BARCODE_TELEPEN_NUM },
+  { "itf14",		BARCODE_ITF14 },
+  { "kix",		BARCODE_KIX },
+  { "aztec",		BARCODE_AZTEC },
+  { "daft",		BARCODE_DAFT },
+  { "dpd",		BARCODE_DPD },			// new in 2.16.0
+  { "microqr",		BARCODE_MICROQR },
+  { "hibc-128",		BARCODE_HIBC_128 },
+  { "hibc-39",		BARCODE_HIBC_39 },
+  { "hibc-dm",		BARCODE_HIBC_DM },
+  { "hibc-qr",		BARCODE_HIBC_QR },
+  { "hibc-pdf",		BARCODE_HIBC_PDF },
+  { "hibc-micpdf",	BARCODE_HIBC_MICPDF },
+  { "hibc-blockf",	BARCODE_HIBC_BLOCKF },
+  { "hibc-aztec",	BARCODE_HIBC_AZTEC },
+  { "dotcode",		BARCODE_DOTCODE },		// new in 2.16.0
+  { "hanxin",		BARCODE_HANXIN },		// new in 2.16.0
+  { "mailmark-2d",	BARCODE_MAILMARK_2D },		// new in 2.16.0
+  { "upu-s10",		BARCODE_UPU_S10 },		// new in 2.16.0
+  { "mailmark-4s",	BARCODE_MAILMARK_4S },		// new in 2.16.0
+  { "azrune",		BARCODE_AZRUNE },
+  { "code32",		BARCODE_CODE32 },
+  { "eanx-cc",		BARCODE_EANX_CC },
+  { "ean128-cc",	BARCODE_EAN128_CC },
+  { "rss14-cc",		BARCODE_RSS14_CC },
+  { "rss-ltd-cc",	BARCODE_RSS_LTD_CC },
+  { "rss-exp-cc",	BARCODE_RSS_EXP_CC },
+  { "upca-cc",		BARCODE_UPCA_CC },
+  { "upce-cc",		BARCODE_UPCE_CC },
+  { "rss14stack-cc",	BARCODE_RSS14STACK_CC },
+  { "rss14-omni-cc",	BARCODE_RSS14_OMNI_CC },
+  { "rss-expstack-cc",	BARCODE_RSS_EXPSTACK_CC },
+  { "channel",		BARCODE_CHANNEL },
+  { "codeone",		BARCODE_CODEONE },
+  { "gridmatrix",	BARCODE_GRIDMATRIX },
+  { "upnqr",		BARCODE_UPNQR },		// new in 2.16.0
+  { "ultra",		BARCODE_ULTRA },		// new in 2.16.0
+  { "rmqr",		BARCODE_RMQR },			// new in 2.16.0
+  { "bc412",		BARCODE_BC412 },		// new in 2.16.0
+  { "dxfilmedge",	BARCODE_DXFILMEDGE },		// new in 2.16.0
+  { "ean8-cc",		BARCODE_EAN8_CC },		// new in 2.16.0
+  { "ean13-cc",		BARCODE_EAN13_CC },		// new in 2.16.0
+  { NULL,		0 }
 };
 
 
-// tsvg.c:
-extern int Svg(Tcl_Interp *interp, Tcl_Obj *feps, struct zint_symbol *symbol);
+// Since 2.16 zint draws vector output at two units per module, the same size the
+// raster output has always used. The 2.4.4 vector code tzint carried used one
+// unit per module, so -scale 1 gave a symbol half that size. Halving the scale
+// for vector output keeps every -scale value giving the size it gave before;
+// -vectorscale zint turns that off and hands -scale to zint untouched.
+// zint picks the format from the file name extension; EMF, EPS and SVG are the
+// vector ones (see the filetypes table in library.c).
+static int IsVectorFile(const char *name) {
+  return Tcl_StringCaseMatch(name, "*.svg", TCL_MATCH_NOCASE)
+      || Tcl_StringCaseMatch(name, "*.eps", TCL_MATCH_NOCASE)
+      || Tcl_StringCaseMatch(name, "*.emf", TCL_MATCH_NOCASE);
+}
 
-// tps.c:
-extern int Eps(Tcl_Interp *interp, Tcl_Obj *feps, struct zint_symbol *symbol);
+
+static int IsHexDigit(char c) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
 
 
 static int HexColorCheck(Tcl_Obj *optval, char *color) {
   char *cp;
-  Tcl_Size len;
+  Tcl_Size len, i;
 
   cp = Tcl_GetStringFromObj(optval, &len);
   if (len > 0 && *cp == '#') cp++, len--;
+  // Check the digits before the length: without this a value such as "zzz"
+  // passes as a short form here and libzint rejects it later with a status
+  // code instead of the error message the other bad values get.
+  for (i = 0; i < len; i++) {
+    if (!IsHexDigit(cp[i])) {
+      return 0;
+    }
+  }
   if (len == 1) {
     color[0] = color[1] = color[2] = color[3] = color[4] = color[5] = cp[0];
     color[6] = '\0';
@@ -260,12 +227,27 @@ static int HexColorCheck(Tcl_Obj *optval, char *color) {
     color[6] = '\0';
     return 1;
   }
+  // zint takes an alpha channel as a fourth pair of hex digits; the target
+  // fields are 16 bytes wide, so the 8 digits and the terminator fit
+  if (len == 4) {
+    color[0] = color[1] = cp[0];
+    color[2] = color[3] = cp[1];
+    color[4] = color[5] = cp[2];
+    color[6] = color[7] = cp[3];
+    color[8] = '\0';
+    return 1;
+  }
+  if (len == 8) {
+    strncpy(color, cp, 8);
+    color[8] = '\0';
+    return 1;
+  }
   return 0;
 }
 
 
 static void Xbm(Tcl_Interp *interp, Tcl_Obj *data, struct zint_symbol *zsymbol) {
-  char *rowptr, *colptr;
+  unsigned char *rowptr, *colptr;
   int pitch, row, col, grey, bidx, rest;
   unsigned char pixel, r, g, b;
 
@@ -306,7 +288,8 @@ static void Xbm(Tcl_Interp *interp, Tcl_Obj *data, struct zint_symbol *zsymbol) 
 
 
 static void Bits(Tcl_Interp *interp, Tcl_Obj *list, char onchar, char offchar, struct zint_symbol *zsymbol) {
-  char *rowptr, *colptr, *bits;
+  unsigned char *rowptr, *colptr;
+  char *bits;
   int pitch, row, col, grey;
   unsigned char r, g, b;
   Tcl_Obj *sublist;
@@ -342,7 +325,10 @@ static void Bits(Tcl_Interp *interp, Tcl_Obj *list, char onchar, char offchar, s
 
 
 static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[]) {
-  int err = 0, i, index, cmd, rc, ival, angle = 0, stat = -1;
+  // zint returns 1 to 4 for a warning and ZINT_ERROR (5) upwards for a failure;
+  // on a warning the symbol has been produced and the output is handed over,
+  // with the status as the result and the message in -stat
+  int err = 0, i, index, cmd, rc, prc, ival, angle = 0, stat = -1, vscaleCompat = 1;
   Tcl_Size len;
   struct zint_symbol *zsymbol;
   char *cp, onchar = '1', offchar = '0';
@@ -372,13 +358,15 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     "-barcode", "-symbology", "-height", "-whitespace", "-bind", "-box", "-border",
     "-fg", "-bg", "-foreground", "-background", "-cols", "-vers", "-rotate", "-security",
     "-mode", "-primary", "-scale", "-format", "-notext", "-square", "-init", "-smalltext",
-    "-onchar", "-offchar", "-opt1", "-opt2", "-opt3", "-stat", NULL
+    "-onchar", "-offchar", "-opt1", "-opt2", "-opt3", "-stat", "-vectorscale",
+    "-dpi", "-dpmm", "-eci", NULL
   };
   enum options {
     TZINT_BARCODE, TZINT_SYMBOLOGY, TZINT_HEIGHT, TZINT_WHITESPACE, TZINT_BIND, TZINT_BOX, TZINT_BORDER,
     TZINT_FG, TZINT_BG, TZINT_FOREGROUND, TZINT_BACKGROUND, TZINT_COLS, TZINT_VERS, TZINT_ROTATE, TZINT_SECURITY,
     TZINT_MODE, TZINT_PRIMARY, TZINT_SCALE, TZINT_FORMAT, TZINT_NO_TEXT, TZINT_SQUARE, TZINT_INIT, TZINT_SMALLTEXT,
-    TZINT_ONCHAR, TZINT_OFFCHAR, TZINT_OPT_1, TZINT_OPT_2, TZINT_OPT_3, TZINT_STAT
+    TZINT_ONCHAR, TZINT_OFFCHAR, TZINT_OPT_1, TZINT_OPT_2, TZINT_OPT_3, TZINT_STAT, TZINT_VECTORSCALE,
+    TZINT_DPI, TZINT_DPMM, TZINT_ECI
   };
   static const char *rotate[] = {
     "0", "90", "180", "270", NULL
@@ -392,6 +380,12 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
   enum format {
     TZINT_UNICODE, TZINT_BINARY, TZINT_GS1
   };
+  static const char *vectorscale[] = {
+    "compat", "zint", NULL
+  };
+  enum vectorscale {
+    TZINT_VSCALE_COMPAT, TZINT_VSCALE_ZINT
+  };
 
   if (objc < 2) {
     Tcl_WrongNumArgs(interp, 1, objv, "command ?name|varName data? ?-option value ...?");
@@ -402,17 +396,15 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     return TCL_ERROR;
   }
 
-  if ((enum options) cmd == TZINT_CMD_VERSION) {
+  if ((enum command) cmd == TZINT_CMD_VERSION) {
     Tcl_SetObjResult(interp, Tcl_NewStringObj(ZINT_VERSION, -1));
     return TCL_OK;
   }
 
-  if ((enum options) cmd == TZINT_CMD_SYMBOLOGIES) {
-    char **cpp = symbols;
+  if ((enum command) cmd == TZINT_CMD_SYMBOLOGIES) {
     list = Tcl_NewListObj(0, NULL);
-    while (*cpp != NULL) {
-      Tcl_ListObjAppendElement(interp, list, Tcl_ObjPrintf("%s", (char *)*cpp));
-      cpp++;
+    for (i = 0; symbolTable[i].name != NULL; i++) {
+      Tcl_ListObjAppendElement(interp, list, Tcl_NewStringObj(symbolTable[i].name, -1));
     }
     Tcl_SetObjResult(interp, list);
     return TCL_OK;
@@ -432,7 +424,8 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     goto cleanup;
   }
   
-  for (i = 4; i < objc; i++) {
+  // options come in pairs, so step over the option and its value together
+  for (i = 4; i < objc; i += 2) {
     if (i == objc-1) {
       Tcl_WrongNumArgs(interp, 1, objv, "? file|bits||eps|svg|xbm name|varName data ?-option value ...?");
       err = 1;
@@ -445,10 +438,11 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     switch ((enum options) index) {
       case TZINT_BARCODE:
       case TZINT_SYMBOLOGY:
-	if(Tcl_GetIndexFromObj(interp, objv[i+1], (const char **)symbols, "-symbology", 0, &ival) == TCL_ERROR) {
+	if(Tcl_GetIndexFromObjStruct(interp, objv[i+1], symbolTable, sizeof(symbolTable[0]),
+				     "-symbology", 0, &ival) == TCL_ERROR) {
 	  err = 1;
 	} else {
-	  zsymbol->symbology = symbolNo[ival];
+	  zsymbol->symbology = symbolTable[ival].symbology;
 	}
 	break;
 
@@ -561,7 +555,7 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       case TZINT_FG:
       case TZINT_FOREGROUND:
 	if (HexColorCheck(objv[i+1], zsymbol->fgcolour) == 0) {
-	  Tcl_SetObjResult(interp, Tcl_NewStringObj("foreground must have 6 hex digits", -1));
+	  Tcl_SetObjResult(interp, Tcl_NewStringObj("foreground must have 6 or 8 hex digits", -1));
 	  err = 1;
 	}
 	break;
@@ -569,7 +563,7 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       case TZINT_BG:
       case TZINT_BACKGROUND:
 	if (HexColorCheck(objv[i+1], zsymbol->bgcolour) == 0) {
-	  Tcl_SetObjResult(interp, Tcl_NewStringObj("background must have 6 hex digits", -1));
+	  Tcl_SetObjResult(interp, Tcl_NewStringObj("background must have 6 or 8 hex digits", -1));
 	  err = 1;
 	}
 	break;
@@ -606,7 +600,7 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
 	    Tcl_SetObjResult(interp, Tcl_NewStringObj("height out of range", -1));
 	    err = 1;
 	  } else {
-	    zsymbol->height = ival;
+	    zsymbol->height = (float)ival;   // height is float since zint 2.6
 	  }
 	} else {
 	  err = 1;
@@ -733,11 +727,62 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       case TZINT_STAT:
         stat = i + 1;
 	break;
+
+      // zint checks the value itself and names the codes it excludes; this
+      // only keeps the outer bounds so a typo does not reach the encoder
+      case TZINT_ECI:
+	if (Tcl_GetIntFromObj(interp, objv[i+1], &ival) == TCL_OK) {
+	  if (ival < 0 || ival > 999999) {
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj("eci out of range", -1));
+	    err = 1;
+	  } else {
+	    zsymbol->eci = ival;
+	  }
+	} else {
+	  err = 1;
+	}
+	break;
+
+      // zint stores the resolution as dots per mm and writes it to BMP, EMF,
+      // PCX, PNG and TIF; 0 leaves the file without a resolution. Its own upper
+      // bound is 1000 dpmm, which is 25400 dpi.
+      case TZINT_DPI:
+	if (Tcl_GetDoubleFromObj(interp, objv[i+1], &dval) == TCL_OK) {
+	  if (dval < 0 || dval > 25400) {
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj("dpi out of range", -1));
+	    err = 1;
+	  } else {
+	    zsymbol->dpmm = (float)(dval / 25.4);
+	  }
+	} else {
+	  err = 1;
+	}
+	break;
+
+      case TZINT_DPMM:
+	if (Tcl_GetDoubleFromObj(interp, objv[i+1], &dval) == TCL_OK) {
+	  if (dval < 0 || dval > 1000) {
+	    Tcl_SetObjResult(interp, Tcl_NewStringObj("dpmm out of range", -1));
+	    err = 1;
+	  } else {
+	    zsymbol->dpmm = (float)dval;
+	  }
+	} else {
+	  err = 1;
+	}
+	break;
+
+      case TZINT_VECTORSCALE:
+	if (Tcl_GetIndexFromObj(interp, objv[i+1], (const char **)vectorscale, "-vectorscale", 0, &ival) == TCL_ERROR) {
+	  err = 1;
+	  break;
+	}
+	vscaleCompat = ((enum vectorscale) ival == TZINT_VSCALE_COMPAT);
+	break;
     }
     if (err) {
       goto cleanup;
     }
-    i++;
   }
 
   if (stat > -1) {
@@ -761,27 +806,45 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       goto cleanup;
     }
     strcpy(zsymbol->outfile, cp);
+    if (vscaleCompat && IsVectorFile(zsymbol->outfile)) {
+      zsymbol->scale /= 2.0f;   // see IsVectorFile
+    }
     cp = Tcl_GetStringFromObj(objv[3], &len);
     rc = ZBarcode_Encode(zsymbol, (unsigned char *)cp, len);
-    if (rc != 0) {
+    if (rc >= ZINT_ERROR) {
+      goto cleanup;
+    }
+  } else
+#endif
+  if ((enum command) cmd == TZINT_CMD_EPS || (enum command) cmd == TZINT_CMD_SVG) {
+    // BARCODE_MEMORY_FILE makes zint write the file into zsymbol->memfile instead
+    // of to disk; the output format is taken from the extension of outfile
+    zsymbol->output_options |= BARCODE_MEMORY_FILE;
+    strcpy(zsymbol->outfile, ((enum command) cmd == TZINT_CMD_EPS)? "out.eps": "out.svg");
+    if (vscaleCompat) {
+      zsymbol->scale /= 2.0f;   // see IsVectorFile
+    }
+    cp = Tcl_GetStringFromObj(objv[3], &len);
+    rc = ZBarcode_Encode_and_Print(zsymbol, (unsigned char *)cp, len, angle);
+    if (rc >= ZINT_ERROR) {
       goto cleanup;
     }
   } else {
-#endif
     cp = Tcl_GetStringFromObj(objv[3], &len);
-    rc = ZBarcode_Encode_and_Buffer(zsymbol, (unsigned char *)cp, (int)len, angle);
-    if (rc != 0) {
+    rc = ZBarcode_Encode_and_Buffer(zsymbol, (unsigned char *)cp, len, angle);
+    if (rc >= ZINT_ERROR) {
       goto cleanup;
     }
-#ifndef NO_CMD_FILE
   }
-#endif
 
   switch ((enum command) cmd) {
 #ifndef NO_CMD_FILE
     case TZINT_CMD_FILE:
-      rc = ZBarcode_Print(zsymbol, angle);
-      if (rc != 0) {
+      prc = ZBarcode_Print(zsymbol, angle);
+      if (prc > rc) {
+	rc = prc;   // report the more serious of encoding and writing
+      }
+      if (rc >= ZINT_ERROR) {
 	goto cleanup;
       }
       break;
@@ -820,22 +883,6 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       break;
 
     case TZINT_CMD_EPS:
-      objptr = Tcl_ObjGetVar2(interp, objv[2], (Tcl_Obj*) NULL, 0);
-      if (objptr == NULL) {
-        objptr = Tcl_NewObj();
-      }
-      if (Tcl_IsShared(objptr)) {
-	objptr = Tcl_DuplicateObj(objptr);
-      }
-      Tcl_SetStringObj(objptr, NULL, 0);
-      Eps(interp, objptr, zsymbol);
-
-      if (Tcl_ObjSetVar2(interp, objv[2], NULL, objptr, TCL_LEAVE_ERR_MSG) == NULL) {
-	err = 1;
-	goto cleanup;
-      }
-      break;
-
     case TZINT_CMD_SVG:
       objptr = Tcl_ObjGetVar2(interp, objv[2], (Tcl_Obj*) NULL, 0);
       if (objptr == NULL) {
@@ -844,9 +891,11 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
       if (Tcl_IsShared(objptr)) {
 	objptr = Tcl_DuplicateObj(objptr);
       }
-      Tcl_SetStringObj(objptr, NULL, 0);
-      Svg(interp, objptr, zsymbol);
-
+      if (zsymbol->memfile != NULL) {
+	Tcl_SetStringObj(objptr, (char *)zsymbol->memfile, zsymbol->memfile_size);
+      } else {
+	Tcl_SetStringObj(objptr, NULL, 0);
+      }
       if (Tcl_ObjSetVar2(interp, objv[2], NULL, objptr, TCL_LEAVE_ERR_MSG) == NULL) {
 	err = 1;
 	goto cleanup;
@@ -885,34 +934,143 @@ static int Tzint_Encode(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
 }
 
 
-static int Tzint_RcsId(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[]) {
-  Tcl_SetObjResult(interp, Tcl_NewStringObj(rcs, -1));
+/*
+ *-----------------------------------------------------------------------------
+ *
+ * Tzint_Manifest --
+ *
+ *  Returns build manifest information as a Tcl dictionary.
+ *
+ * Results:
+ *  A standard Tcl result.
+ *  Interp result is set to a dictionary containing manifest data.
+ *
+ *-----------------------------------------------------------------------------
+ */
+
+static int
+Tzint_Manifest(
+  void *dummy,
+  Tcl_Interp *interp,
+  int objc,
+  Tcl_Obj *const objv[])
+{
+  static const char vTag[] = "@(#)tzint.c v" RELEASE_VERSION " " MANIFEST_VERSION " " MANIFEST_DATE " (BSD 3 License) Alexander Schoepe, Bochum, DE";
+  (void)vTag;
+
+  if (objc != 1) {
+    Tcl_WrongNumArgs(interp, 1, objv, "");
+    return TCL_ERROR;
+  }
+
+  Tcl_Obj *dictPtr = Tcl_NewDictObj();
+
+  Tcl_DictObjPut(interp, dictPtr,
+    Tcl_NewStringObj("version", -1),
+    Tcl_NewStringObj(RELEASE_VERSION, -1));
+
+  Tcl_DictObjPut(interp, dictPtr,
+    Tcl_NewStringObj("date", -1),
+    Tcl_NewStringObj(MANIFEST_DATE, -1));
+
+  Tcl_DictObjPut(interp, dictPtr,
+    Tcl_NewStringObj("check-in", -1),
+    Tcl_NewStringObj(MANIFEST_VERSION, -1));
+
+  Tcl_DictObjPut(interp, dictPtr,
+    Tcl_NewStringObj("build-hash", -1),
+    Tcl_NewStringObj(FOSSIL_BUILD_HASH, -1));
+
+  Tcl_DictObjPut(interp, dictPtr,
+    Tcl_NewStringObj("uuid", -1),
+    Tcl_NewStringObj(MANIFEST_UUID, -1));
+
+  Tcl_SetObjResult(interp, dictPtr);
   return TCL_OK;
 }
 
 
-#ifdef _WINDOWS
-DECLSPEC_EXPORT
-#endif
-int Tzint_Init(Tcl_Interp *interp) {
-#ifdef USE_TCL_STUBS
-  if (Tcl_InitStubs(interp, MY_TCL_INITSTUBS, 0) == NULL) {
-    return TCL_ERROR;
-  }
+#ifndef STRINGIFY
+#  define STRINGIFY(x) STRINGIFY1(x)
+#  define STRINGIFY1(x) #x
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif  /* __cplusplus */
+DLLEXPORT int
+Tzint_Init(Tcl_Interp *interp) {
+   Tcl_CmdInfo info;
+
+  // Support any Tcl version from 8.5.0 to 9.x.x, the upper bound is exclusiv.
+  if (Tcl_InitStubs(interp, "8.5-10", 0) == NULL) {
+    return TCL_ERROR;
+  }
+
+    // Build Info Command - command to return build info for package
+  if (Tcl_GetCommandInfo(interp, "::tcl::build-info", &info)) {
+    Tcl_CreateObjCommand(interp, "::tzint::build-info",
+      info.objProc, (void *)(
+		    PACKAGE_VERSION "+" STRINGIFY(MANIFEST_UUID)
+#if defined(__clang__) && defined(__clang_major__)
+			    ".clang-" STRINGIFY(__clang_major__)
+#if __clang_minor__ < 10
+			    "0"
+#endif
+			    STRINGIFY(__clang_minor__)
+#endif
+#if defined(__cplusplus) && !defined(__OBJC__)
+			    ".cplusplus"
+#endif
+#ifndef NDEBUG
+			    ".debug"
+#endif
+#if !defined(__clang__) && !defined(__INTEL_COMPILER) && defined(__GNUC__)
+			    ".gcc-" STRINGIFY(__GNUC__)
+#if __GNUC_MINOR__ < 10
+			    "0"
+#endif
+			    STRINGIFY(__GNUC_MINOR__)
+#endif
+#ifdef __INTEL_COMPILER
+			    ".icc-" STRINGIFY(__INTEL_COMPILER)
+#endif
+#ifdef TCL_MEM_DEBUG
+			    ".memdebug"
+#endif
+#if defined(_MSC_VER)
+			    ".msvc-" STRINGIFY(_MSC_VER)
+#endif
+#ifdef USE_NMAKE
+			    ".nmake"
+#endif
+#ifndef TCL_CFG_OPTIMIZED
+			    ".no-optimize"
+#endif
+#ifdef __OBJC__
+			    ".objective-c"
+#if defined(__cplusplus)
+			    "plusplus"
+#endif
+#endif
+#ifdef TCL_CFG_PROFILED
+			    ".profile"
+#endif
+#ifdef PURIFY
+			    ".purify"
+#endif
+#ifdef STATIC_BUILD
+			    ".static"
+#endif
+		), NULL);
+  }
+
   Tcl_CreateObjCommand(interp, "::tzint::Encode", Tzint_Encode, (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
-  Tcl_CreateObjCommand(interp, "::tzint::RcsId", Tzint_RcsId, (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
+  Tcl_CreateObjCommand(interp, "::tzint::manifest", Tzint_Manifest, (void *)NULL, (Tcl_CmdDeleteProc *)NULL);
 
   Tcl_PkgProvide(interp, PACKAGE_NAME, PACKAGE_VERSION);
   return TCL_OK;
 }
-
-
-#ifdef _WINDOWS
-DECLSPEC_EXPORT
-#endif
-int Tzint_SafeInit(Tcl_Interp *interp) {
-  return Tzint_Init(interp);
+#ifdef __cplusplus
 }
-
+#endif  /* __cplusplus */

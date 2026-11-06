@@ -1,0 +1,64 @@
+<div class='fossil-doc' data-title='Download Page'>
+<table>
+  <tr>
+    <td colspan="2"><b>Version PACKAGE_VERSION</b></td>
+  </tr>
+  <tr>
+    <td>source code</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td><a href="tzintPACKAGE_VERSION-src.tar.gz" onclick="_paq.push(['trackEvent', 'download', 'tzintPACKAGE_VERSION-src.tar.gz']);">tzintPACKAGE_VERSION-src.tar.gz</a></td>
+  </tr>
+  <tr>
+    <td colspan="2">tzint is a C extension and is shipped as source: a built library
+        holds for one platform and one Tcl series only. Unpack, then
+        <code>./configure --with-tcl=DIR</code>, <code>make</code>,
+        <code>make install</code>.</td>
+  </tr>
+  <tr>
+    <td colspan="2">&nbsp;</td>
+  </tr>
+
+  <tr>
+    <td colspan="2"><b>Requirements</b></td>
+  </tr>
+  <tr>
+    <td colspan="2">Tcl 8.5 or newer, including Tcl 9. Tk is not used.</td>
+  </tr>
+  <tr>
+    <td colspan="2">&nbsp;</td>
+  </tr>
+
+  <tr>
+    <td colspan="2"><b>Optional Libraries</b></td>
+  </tr>
+  <tr>
+    <td colspan="2">Two, and they are not shipped with tzint.</td>
+  </tr>
+  <tr>
+    <td>libpng</td>
+    <td>needed for the raster file formats of the <code>file</code> command.
+        On Debian and Ubuntu the development package carries the headers:
+        <code>apt install libpng-dev</code>. Build without it using
+        <code>--enable-filecmd=no</code>, which leaves the <code>bits</code>,
+        <code>xbm</code>, <code>eps</code> and <code>svg</code> commands.</td>
+  </tr>
+  <tr>
+    <td>zlib</td>
+    <td>used together with libpng for the PNG output.</td>
+  </tr>
+  <tr>
+    <td colspan="2">&nbsp;</td>
+  </tr>
+
+  <tr>
+    <td colspan="2"><b>Included</b></td>
+  </tr>
+  <tr>
+    <td colspan="2">The libzint backend by Robin Stuart is part of the source
+        archive; nothing needs to be fetched separately. The version it carries
+        is what <code>::tzint::Encode version</code> reports.</td>
+  </tr>
+</table>
+</div>
