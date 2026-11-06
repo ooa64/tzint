@@ -271,7 +271,13 @@ BINROOT		= $(MAKEDIR)
 ROOT            = $(MAKEDIR)\..
 
 PRJIMPLIB	= $(OUT_DIR)\$(PROJECT)$(VERSION)$(SUFX).lib
-PRJLIBNAME	= $(PROJECT)$(VERSION)$(SUFX).$(EXT)
+PRJLIBNAME8	= $(PROJECT)$(VERSION)$(SUFX).$(EXT)
+PRJLIBNAME9	= tcl9$(PROJECT)$(VERSION)$(SUFX).$(EXT)
+!if $(TCL_MAJOR_VERSION) < 9
+PRJLIBNAME	= $(PRJLIBNAME8)
+!else
+PRJLIBNAME	= $(PRJLIBNAME9)
+!endif
 PRJLIB		= $(OUT_DIR)\$(PRJLIBNAME)
 
 PRJSTUBLIBNAME	= $(STUBPREFIX)$(VERSION).lib
@@ -345,7 +351,7 @@ CON_CFLAGS	= $(cflags) $(cdebug) $(crt) -DCONSOLE
 TCL_CFLAGS	= -DPACKAGE_NAME="\"$(PROJECT)\"" \
 		  -DPACKAGE_VERSION="\"$(DOTVERSION)\"" \
 		  -DBUILD_$(PROJECT) \
-		  -D_WINDOWS -DNO_CMD_FILE -DNO_PNG \
+		  -D_WINDOWS -DNO_CMD_FILE -DZINT_NO_PNG \
 		  $(BASE_CFLAGS) $(OPTDEFINES)
 
 #---------------------------------------------------------------------
@@ -420,7 +426,7 @@ pkgIndex:   $(OUT_DIR)\pkgIndex.tcl
 
 test: setup $(PROJECT)
 	@set TCL_LIBRARY=$(TCL_LIBRARY:\=/)
-	@set TCLLIBPATH=$(OUT_DIR_PATH:\=/)
+	@set TCLLIBPATH=$(OUT_DIR:\=/)
 !if $(TCLINSTALL)
 	@set PATH=$(_TCLDIR)\bin;$(PATH)
 !else
@@ -437,7 +443,7 @@ test: setup $(PROJECT)
 shell: setup $(PROJECT)
 	@set VLERQ_LIBRARY=$(LIBDIR:\=/)
 	@set TCL_LIBRARY=$(TCL_LIBRARY:\=/)
-	@set TCLLIBPATH=$(OUT_DIR_PATH:\=/)
+	@set TCLLIBPATH=$(OUT_DIR:\=/)
 !if $(TCLINSTALL)
 	@set PATH=$(_TCLDIR)\bin;$(PATH)
 !else
@@ -445,7 +451,7 @@ shell: setup $(PROJECT)
 !endif
 	$(DEBUGGER) $(TCLSH) $(SCRIPT)
 
-setup:
+setup: manifest.h
 	@if not exist $(OUT_DIR)\nul mkdir $(OUT_DIR)
 	@if not exist $(TMP_DIR)\nul mkdir $(TMP_DIR)
 
@@ -513,10 +519,14 @@ $(OUT_DIR)\pkgIndex.tcl: $(ROOT)\pkgIndex.tcl.in
 	@nmakehlp -s << $** > $@
 @PACKAGE_VERSION@    $(DOTVERSION)
 @PACKAGE_NAME@       $(PROJECT)
-@PKG_LIB_FILE@       $(PRJLIBNAME)
+@PKG_LIB_FILE8@      $(PRJLIBNAME8)
+@PKG_LIB_FILE9@      $(PRJLIBNAME9)
 <<
 	@echo package ifneeded tzint $(DOTVERSION) \
 	    [list load [file join $$dir $(PRJLIBNAME)] Tzint] >> $@
+
+manifest.h:	$(ROOT)/manifest $(ROOT)/manifest.uuid $(ROOT)/tools/mkversion.tcl
+	$(TCLSH) ../tools/mkversion.tcl -defines >$@
 
 #---------------------------------------------------------------------
 # Installation. (EDIT)
